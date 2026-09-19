@@ -1,0 +1,150 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #dc2626;
+  --radius: 0.75rem;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #121215;
+  --card-foreground: #fafafa;
+  --popover: #121215;
+  --popover-foreground: #fafafa;
+  --primary: #ef4444;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #1e1e24;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #ef4444;
+}
+
+/* Dynamic Accent Colors */
+[data-accent="red"], html[data-accent="red"] {
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --ring: #dc2626;
+}
+.dark[data-accent="red"], .dark [data-accent="red"], html.dark[data-accent="red"] {
+  --primary: #ef4444;
+  --primary-foreground: #ffffff;
+  --ring: #ef4444;
+}
+
+[data-accent="orange"], html[data-accent="orange"] {
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  --ring: #ea580c;
+}
+.dark[data-accent="orange"], .dark [data-accent="orange"], html.dark[data-accent="orange"] {
+  --primary: #f97316;
+  --primary-foreground: #ffffff;
+  --ring: #f97316;
+}
+
+[data-accent="blue"], html[data-accent="blue"] {
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --ring: #2563eb;
+}
+.dark[data-accent="blue"], .dark [data-accent="blue"], html.dark[data-accent="blue"] {
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --ring: #3b82f6;
+}
+
+[data-accent="green"], html[data-accent="green"] {
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --ring: #059669;
+}
+.dark[data-accent="green"], .dark [data-accent="green"], html.dark[data-accent="green"] {
+  --primary: #10b981;
+  --primary-foreground: #ffffff;
+  --ring: #10b981;
+}
+
+[data-accent="yellow"], html[data-accent="yellow"] {
+  --primary: #d97706;
+  --primary-foreground: #ffffff;
+  --ring: #d97706;
+}
+.dark[data-accent="yellow"], .dark [data-accent="yellow"], html.dark[data-accent="yellow"] {
+  --primary: #eab308;
+  --primary-foreground: #000000;
+  --ring: #eab308;
+}
+
+[data-accent="zinc"], html[data-accent="zinc"] {
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --ring: #18181b;
+}
+.dark[data-accent="zinc"], .dark [data-accent="zinc"], html.dark[data-accent="zinc"] {
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --ring: #d4d4d8;
+}
+
+* {
+  @apply border-border outline-ring/50;
+}
+
+body {
+  @apply bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
