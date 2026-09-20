@@ -931,15 +931,17 @@ export default function Page() {
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="user-email" className="text-xs font-semibold">E-mail</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="user-email" className="text-xs font-semibold">E-mail</Label>
+              <span className="text-[10px] text-muted-foreground">Vinculado ao login</span>
+            </div>
             <Input
               id="user-email"
               type="email"
               value={userForm.email}
-              onChange={e => setUserForm(prev => ({ ...prev, email: e.target.value }))}
-              placeholder="seuemail@exemplo.com"
-              required
-              className="text-xs"
+              disabled
+              readOnly
+              className="text-xs bg-muted/60 text-muted-foreground cursor-not-allowed border-dashed select-none"
             />
           </div>
 
