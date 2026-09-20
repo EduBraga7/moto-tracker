@@ -67,6 +67,9 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { type AccentColor, ACCENT_CONFIG } from '@/components/accent-picker'
 import {
   getMoto,
+  getMotos,
+  addMotoAction,
+  deleteMotoAction,
   updateMotoAction,
   getFuelings,
   addFuelingAction,
@@ -75,6 +78,9 @@ import {
   type Moto,
   type AuthUser
 } from '@/app/actions'
+import { compressImage } from '@/lib/image-utils'
+import { WelcomeDialog, type OnboardingData } from '@/components/onboarding/welcome-dialog'
+import { GarageDialog } from '@/components/garage/garage-dialog'
 
 const defaultMoto: Moto = {
   id: 1,
@@ -103,7 +109,17 @@ export default function Page() {
   const [mounted, setMounted] = useState(false)
   const [accent, setAccent] = useState<AccentColor>('red')
   const [fuelings, setFuelings] = useState<Fueling[]>([])
-  const [moto, setMoto] = useState<Moto>(defaultMoto)
+  const [motos, setMotos] = useState<Moto[]>([defaultMoto])
+  const [selectedMotoId, setSelectedMotoId] = useState<number>(1)
+  const [isGarageDialogOpen, setIsGarageDialogOpen] = useState(false)
+
+  const currentMoto = useMemo(() => {
+    return motos.find(m => m.id === selectedMotoId) || motos[0] || defaultMoto
+  }, [motos, selectedMotoId])
+
+  // Backward-compatible alias
+  const moto = currentMoto
+
   const [loading, setLoading] = useState(true)
   const [savingMoto, setSavingMoto] = useState(false)
   const [savingFueling, setSavingFueling] = useState(false)
@@ -140,13 +156,31 @@ export default function Page() {
   const loadData = async (userId?: number) => {
     try {
       setLoading(true)
-      const [loadedMoto, loadedFuelings] = await Promise.all([
-        getMoto(userId),
+      const [loadedMotos, loadedFuelings] = await Promise.all([
+        getMotos(userId),
         getFuelings(userId)
       ])
-      if (loadedMoto) setMoto(loadedMoto)
+      if (loadedMotos && loadedMotos.length > 0) {
+        setMotos(loadedMotos)
+        let activeId = loadedMotos[0].id
+        if (typeof window !== 'undefined') {
+          const savedActiveId = localStorage.getItem(`moto_tracker_active_moto_${userId || 'default'}`)
+          if (savedActiveId && loadedMotos.some(m => m.id === Number(savedActiveId))) {
+            activeId = Number(savedActiveId)
+          }
+        }
+        setSelectedMotoId(activeId)
+      }
       if (loadedFuelings) {
         setFuelings(loadedFuelings)
+      }
+
+      // Trigger welcome questionnaire if user hasn't completed it yet
+      if (userId && typeof window !== 'undefined') {
+        const onboardingDone = localStorage.getItem(`moto_onboarding_completed_${userId}`)
+        if (!onboardingDone) {
+          setIsWelcomeOpen(true)
+        }
       }
     } catch (error) {
       console.error('Falha ao carregar dados:', error)
@@ -157,6 +191,7 @@ export default function Page() {
 
   // Authentication & Session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(false)
 
   // Connected User State
   const [userProfile, setUserProfile] = useState<AuthUser>({
@@ -264,6 +299,7 @@ export default function Page() {
 
   // Moto edit form state
   const [motoForm, setMotoForm] = useState<Moto>(defaultMoto)
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false)
 
   const openMotoDialog = () => {
     setMotoForm(moto)
@@ -274,43 +310,186 @@ export default function Page() {
     e.preventDefault()
     setSavingMoto(true)
     try {
-      setMoto(motoForm)
-      await updateMotoAction({
+      const res = await updateMotoAction({
         name: motoForm.name,
         model: motoForm.model,
         plate: motoForm.plate,
         year: motoForm.year,
         photoUrl: motoForm.photoUrl
-      }, userProfile.id)
-      setIsMotoDialogOpen(false)
+      }, userProfile.id, currentMoto.id)
+
+      if (res && !res.success) {
+        alert('Aviso ao salvar moto: ' + (res.error || 'Erro desconhecido'))
+      } else {
+        setMotos(prev =>
+          prev.map(m => (m.id === currentMoto.id ? { ...m, ...motoForm } : m))
+        )
+        setIsMotoDialogOpen(false)
+      }
     } catch (err) {
       console.error('Erro ao salvar moto:', err)
+      alert('Erro de conexão ao salvar moto. Verifique sua conexão e tente novamente.')
     } finally {
       setSavingMoto(false)
     }
   }
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectMoto = (motoId: number) => {
+    setSelectedMotoId(motoId)
+    try {
+      localStorage.setItem(`moto_tracker_active_moto_${userProfile.id}`, String(motoId))
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleAddMoto = async (motoData: {
+    name: string
+    model: string
+    plate: string
+    year: string
+    photoUrl: string
+  }) => {
+    const res = await addMotoAction(motoData, userProfile.id)
+    if (res.success && res.moto) {
+      const newMoto = res.moto
+      setMotos(prev => [...prev, newMoto])
+      handleSelectMoto(newMoto.id)
+    } else {
+      throw new Error(res.error || 'Erro ao adicionar moto')
+    }
+  }
+
+  const handleUpdateMoto = async (
+    motoId: number,
+    motoData: {
+      name: string
+      model: string
+      plate: string
+      year: string
+      photoUrl: string
+    }
+  ) => {
+    const res = await updateMotoAction(motoData, userProfile.id, motoId)
+    if (res.success) {
+      setMotos(prev =>
+        prev.map(m => (m.id === motoId ? { ...m, ...motoData } : m))
+      )
+    } else {
+      throw new Error(res.error || 'Erro ao atualizar moto')
+    }
+  }
+
+  const handleDeleteMoto = async (motoId: number) => {
+    const res = await deleteMotoAction(motoId, userProfile.id)
+    if (res.success) {
+      setMotos(prev => {
+        const next = prev.filter(m => m.id !== motoId)
+        if (selectedMotoId === motoId && next.length > 0) {
+          handleSelectMoto(next[0].id)
+        }
+        return next
+      })
+      setFuelings(prev => prev.filter(f => f.motoId !== motoId))
+    } else {
+      throw new Error(res.error || 'Erro ao excluir moto')
+    }
+  }
+
+  const handleCompleteOnboarding = async (data: OnboardingData) => {
+    try {
+      // 1. Update moto in Neon Postgres
+      await updateMotoAction({
+        name: data.motoName,
+        model: data.motoModel,
+        plate: data.motoPlate,
+        year: data.motoYear,
+        photoUrl: moto.photoUrl || ''
+      }, userProfile.id)
+
+      // 2. If odometer was provided and there are no fuelings yet, register initial baseline
+      if (data.currentOdometer && fuelings.length === 0) {
+        const todayStr = new Date().toISOString().split('T')[0]
+        const addRes = await addFuelingAction({
+          date: todayStr,
+          odometer: data.currentOdometer,
+          liters: 10,
+          cost: 60,
+          full: true
+        }, userProfile.id)
+        if (addRes?.fueling) {
+          setFuelings([addRes.fueling])
+        }
+      }
+
+      // 3. Update local moto state
+      setMotos(prev =>
+        prev.map(m =>
+          m.id === currentMoto.id
+            ? {
+                ...m,
+                name: data.motoName,
+                model: data.motoModel,
+                plate: data.motoPlate,
+                year: data.motoYear
+              }
+            : m
+        )
+      )
+
+      // 4. Save completion flags in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`moto_onboarding_completed_${userProfile.id}`, 'true')
+        localStorage.setItem(`moto_usage_profile_${userProfile.id}`, data.usageProfile)
+        localStorage.setItem(`moto_target_consumption_${userProfile.id}`, String(data.consumptionTarget))
+      }
+    } catch (err) {
+      console.error('Erro ao concluir onboarding:', err)
+    }
+  }
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione um arquivo de imagem válido (JPG, PNG ou WebP).')
+      return
+    }
+
+    setIsCompressingPhoto(true)
+    try {
+      // Comprime automaticamente fotos pesadas de celulares (para max 1000px e ~100KB)
+      const compressedUrl = await compressImage(file, 1000, 1000, 0.82)
+      setMotoForm(prev => ({ ...prev, photoUrl: compressedUrl }))
+    } catch (err) {
+      console.error('Erro ao comprimir imagem, usando fallback:', err)
       const reader = new FileReader()
       reader.onloadend = () => {
         setMotoForm(prev => ({ ...prev, photoUrl: reader.result as string }))
       }
       reader.readAsDataURL(file)
+    } finally {
+      setIsCompressingPhoto(false)
+      if (e.target) e.target.value = ''
     }
   }
 
-  // Extract unique months (YYYY-MM) and years (YYYY) from fuelings
+  // Fuelings scoped to active motorcycle
+  const activeMotoFuelings = useMemo(() => {
+    return fuelings.filter(f => !f.motoId || f.motoId === currentMoto.id)
+  }, [fuelings, currentMoto.id])
+
+  // Extract unique months (YYYY-MM) and years (YYYY) from active fuelings
   const availableMonths = useMemo(() => {
-    const months = new Set(fuelings.map(f => f.date.substring(0, 7)))
+    const months = new Set(activeMotoFuelings.map(f => f.date.substring(0, 7)))
     return Array.from(months).sort().reverse()
-  }, [fuelings])
+  }, [activeMotoFuelings])
 
   const availableYears = useMemo(() => {
-    const years = new Set(fuelings.map(f => f.date.substring(0, 4)))
+    const years = new Set(activeMotoFuelings.map(f => f.date.substring(0, 4)))
     return Array.from(years).sort().reverse()
-  }, [fuelings])
+  }, [activeMotoFuelings])
 
   const [selectedMonth, setSelectedMonth] = useState<string>('all')
 
@@ -323,16 +502,16 @@ export default function Page() {
   })
 
   const currentOdometer = useMemo(() => {
-    if (fuelings.length === 0) return 0
-    return Math.max(...fuelings.map(f => f.odometer))
-  }, [fuelings])
+    if (activeMotoFuelings.length === 0) return 0
+    return Math.max(...activeMotoFuelings.map(f => f.odometer))
+  }, [activeMotoFuelings])
 
   // ================= CALCULATION ENGINE (STANDARDIZED & WEIGHTED) =================
   const computedRows = useMemo(() => {
-    if (fuelings.length === 0) return []
+    if (activeMotoFuelings.length === 0) return []
 
     // Sort ascending by odometer (chronological sequence)
-    const chronological = [...fuelings].sort((a, b) => a.odometer - b.odometer)
+    const chronological = [...activeMotoFuelings].sort((a, b) => a.odometer - b.odometer)
 
     let accumulatedDistance = 0
     let accumulatedLiters = 0
@@ -379,7 +558,7 @@ export default function Page() {
     })
 
     return analyzed.reverse()
-  }, [fuelings])
+  }, [activeMotoFuelings])
 
   // Dashboard filtered metrics (Weighted Mathematical Means)
   const computed = useMemo(() => {
@@ -581,6 +760,7 @@ export default function Page() {
     setSavingFueling(true)
     try {
       const res = await addFuelingAction({
+        motoId: currentMoto.id,
         date: form.date,
         odometer,
         liters,
@@ -592,7 +772,7 @@ export default function Page() {
         setFuelings(prev => [res.fueling!, ...prev])
       } else {
         setFuelings(prev => [
-          { id: Date.now(), date: form.date, odometer, liters, cost: cost || 0, full: form.full },
+          { id: Date.now(), motoId: currentMoto.id, date: form.date, odometer, liters, cost: cost || 0, full: form.full },
           ...prev
         ])
       }
@@ -624,8 +804,8 @@ export default function Page() {
   const navItems = [
     { id: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
     { id: 'statistics', label: 'Estatísticas', icon: BarChart3 },
-    { id: 'history', label: 'Histórico', icon: History, count: fuelings.length },
-    { id: 'garage', label: 'Meu Veículo', icon: Bike },
+    { id: 'history', label: 'Histórico', icon: History, count: activeMotoFuelings.length },
+    { id: 'garage', label: 'Minha Garagem', icon: Bike, count: motos.length },
     { id: 'settings', label: 'Configurações', icon: Settings }
   ] as const
 
@@ -633,13 +813,14 @@ export default function Page() {
   const NewFuelingDialog = () => (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger>
-        <Button size="sm" className="h-9 gap-1.5 font-medium shadow-xs cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+        <Button size="sm" className="h-8.5 sm:h-9 px-2.5 sm:px-3 gap-1.5 font-medium shadow-xs cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
           <Plus className="h-4 w-4" />
-          <span>Novo Abastecimento</span>
+          <span className="hidden sm:inline">Novo Abastecimento</span>
+          <span className="sm:hidden text-xs">Abastecer</span>
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar Abastecimento</DialogTitle>
           <DialogDescription>
@@ -647,6 +828,15 @@ export default function Page() {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={registerFueling} className="grid gap-4 py-4">
+          <div className="rounded-lg border border-border/80 bg-muted/40 p-2.5 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground flex items-center gap-1.5">
+              <Bike className="h-3.5 w-3.5 text-primary" /> Moto Selecionada:
+            </span>
+            <span className="font-semibold text-foreground truncate max-w-[190px]">
+              {currentMoto.model} {currentMoto.plate ? `(${currentMoto.plate})` : ''}
+            </span>
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="odometer">Quilometragem atual (km)</Label>
             <Input
@@ -745,7 +935,7 @@ export default function Page() {
 
   const EditMotoDialog = () => (
     <Dialog open={isMotoDialogOpen} onOpenChange={setIsMotoDialogOpen}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bike className="h-5 w-5 text-primary" />
@@ -760,7 +950,12 @@ export default function Page() {
           {/* Photo preview and upload */}
           <div className="flex flex-col items-center gap-3 pb-2">
             <div className="relative group w-32 h-32 rounded-2xl overflow-hidden border border-border bg-muted/30 flex items-center justify-center shadow-inner">
-              {motoForm.photoUrl ? (
+              {isCompressingPhoto ? (
+                <div className="flex flex-col items-center justify-center text-muted-foreground p-2 text-center gap-1.5">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <span className="text-[10px] font-medium text-foreground">Otimizando foto...</span>
+                </div>
+              ) : motoForm.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={motoForm.photoUrl}
@@ -774,14 +969,16 @@ export default function Page() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity duration-200 text-xs gap-1 cursor-pointer"
-              >
-                <Camera className="h-5 w-5" />
-                <span>Alterar foto</span>
-              </button>
+              {!isCompressingPhoto && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity duration-200 text-xs gap-1 cursor-pointer"
+                >
+                  <Camera className="h-5 w-5" />
+                  <span>Alterar foto</span>
+                </button>
+              )}
             </div>
 
             <input
@@ -797,17 +994,27 @@ export default function Page() {
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={isCompressingPhoto || savingMoto}
                 className="text-xs h-8 gap-1.5 cursor-pointer"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="h-3.5 w-3.5" />
-                {motoForm.photoUrl ? 'Trocar foto' : 'Enviar foto'}
+                {isCompressingPhoto ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Otimizando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-3.5 w-3.5" />
+                    {motoForm.photoUrl ? 'Trocar foto' : 'Enviar foto'}
+                  </>
+                )}
               </Button>
-              {motoForm.photoUrl && (
+              {motoForm.photoUrl && !isCompressingPhoto && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
+                  disabled={savingMoto}
                   className="text-xs h-8 text-destructive hover:bg-destructive/10 cursor-pointer"
                   onClick={() => setMotoForm(prev => ({ ...prev, photoUrl: '' }))}
                 >
@@ -877,7 +1084,7 @@ export default function Page() {
 
   const UserProfileDialog = () => (
     <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -965,7 +1172,21 @@ export default function Page() {
           </div>
         </form>
 
-        <div className="border-t border-border pt-3 mt-1">
+        <div className="border-t border-border pt-3 mt-1 space-y-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setIsUserDialogOpen(false)
+              setIsWelcomeOpen(true)
+            }}
+            className="w-full text-xs gap-2 cursor-pointer border-dashed text-muted-foreground hover:text-foreground"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            Refazer Tour de Boas-Vindas & Questionário
+          </Button>
+
           <Button
             type="button"
             variant="ghost"
@@ -1011,6 +1232,25 @@ export default function Page() {
     <div className="flex min-h-screen w-full bg-background text-foreground">
       <EditMotoDialog />
       <UserProfileDialog />
+      <WelcomeDialog
+        open={isWelcomeOpen}
+        onOpenChange={setIsWelcomeOpen}
+        userName={userProfile.name}
+        userAvatar={userProfile.avatarUrl}
+        initialMotoModel={moto.model}
+        onComplete={handleCompleteOnboarding}
+      />
+      <GarageDialog
+        open={isGarageDialogOpen}
+        onOpenChange={setIsGarageDialogOpen}
+        motos={motos}
+        activeMotoId={currentMoto.id}
+        onSelectMoto={handleSelectMoto}
+        onAddMoto={handleAddMoto}
+        onUpdateMoto={handleUpdateMoto}
+        onDeleteMoto={handleDeleteMoto}
+        fuelings={fuelings}
+      />
 
       {/* Backdrop for mobile drawer */}
       {sidebarOpen && (
@@ -1056,8 +1296,9 @@ export default function Page() {
         {/* Motorcycle Quick Card in Sidebar */}
         <div className="p-3 border-b border-border">
           <div
-            onClick={openMotoDialog}
+            onClick={() => setIsGarageDialogOpen(true)}
             className="group flex items-center gap-3 rounded-xl border border-border/80 bg-muted/40 p-2.5 transition-all hover:bg-muted cursor-pointer hover:border-primary/40"
+            title="Minha Garagem - Clique para alternar ou cadastrar veículos"
           >
             <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-border bg-muted/80">
               {moto.photoUrl ? (
@@ -1070,9 +1311,16 @@ export default function Page() {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate text-foreground leading-tight">
-                {moto.model || 'Minha Moto'}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold truncate text-foreground leading-tight">
+                  {moto.model || 'Minha Moto'}
+                </p>
+                {motos.length > 1 && (
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/40 text-primary font-mono shrink-0 ml-1">
+                    {motos.length} motos
+                  </Badge>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[10px] font-mono uppercase text-muted-foreground">
                   {moto.plate || 'SEM PLACA'}
@@ -1083,7 +1331,7 @@ export default function Page() {
                 </span>
               </div>
             </div>
-            <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
           </div>
         </div>
 
@@ -1189,20 +1437,34 @@ export default function Page() {
                 {activeTab === 'dashboard' && 'Painel Geral'}
                 {activeTab === 'statistics' && 'Estatísticas & Análises'}
                 {activeTab === 'history' && 'Histórico de Abastecimentos'}
-                {activeTab === 'garage' && 'Meu Veículo'}
+                {activeTab === 'garage' && 'Minha Garagem'}
                 {activeTab === 'settings' && 'Configurações'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* Quick Vehicle Switcher on Mobile */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsGarageDialogOpen(true)}
+              className="h-8.5 px-2.5 gap-1.5 text-xs md:hidden border-border/80 bg-muted/30 cursor-pointer shadow-2xs"
+              title="Alternar veículo ativo"
+            >
+              <Bike className="h-3.5 w-3.5 text-primary" />
+              <span className="font-semibold truncate max-w-[95px]">
+                {moto.model.split(' ')[0]} {moto.model.split(' ')[1] || ''}
+              </span>
+            </Button>
+
             <ThemeToggle className="hidden sm:inline-flex" />
             <NewFuelingDialog />
           </div>
         </header>
 
         {/* MAIN BODY CONTENT */}
-        <main className="flex-1 p-4 md:p-8 max-w-6xl w-full mx-auto space-y-6">
+        <main className="flex-1 p-4 md:p-8 max-w-6xl w-full mx-auto space-y-6 pb-28 md:pb-8">
           {/* TAB 1: DASHBOARD */}
           {activeTab === 'dashboard' && (
             <motion.div
@@ -1272,7 +1534,7 @@ export default function Page() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg px-2.5 py-1">
                         <Fuel className="h-3.5 w-3.5 text-primary" />
-                        <span>Abastecimentos: <strong className="text-foreground">{fuelings.length}</strong></span>
+                        <span>Abastecimentos: <strong className="text-foreground">{activeMotoFuelings.length}</strong></span>
                       </div>
 
                       <Button
@@ -1286,15 +1548,24 @@ export default function Page() {
                       </Button>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openMotoDialog}
-                      className="h-8 gap-1.5 text-xs sm:hidden w-full mt-1 cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Editar Veículo
-                    </Button>
+                    <div className="flex gap-2 sm:hidden w-full mt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={openMotoDialog}
+                        className="flex-1 h-8 text-xs cursor-pointer"
+                      >
+                        <Pencil className="h-3 w-3 mr-1" /> Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsGarageDialogOpen(true)}
+                        className="flex-1 h-8 text-xs cursor-pointer border-primary/40 text-primary"
+                      >
+                        <Bike className="h-3 w-3 mr-1" /> Garagem ({motos.length})
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1854,7 +2125,90 @@ export default function Page() {
                 <NewFuelingDialog />
               </div>
 
-              <Card className="border-border shadow-xs overflow-hidden">
+              {/* Mobile View: Cards */}
+              <div className="space-y-3 sm:hidden">
+                {computed.rows.length === 0 ? (
+                  <Card className="border-border p-6 text-center text-sm text-muted-foreground">
+                    Nenhum abastecimento cadastrado ainda. Clique em "Abastecer" para começar!
+                  </Card>
+                ) : (
+                  computed.rows.map((row, index) => (
+                    <motion.div
+                      key={row.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.02 }}
+                    >
+                      <Card className="border-border bg-card p-3.5 shadow-2xs hover:border-primary/40 transition-colors">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs font-semibold text-foreground">{formatDate(row.date)}</span>
+                            {row.full ? (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                                Tanque Cheio
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                Parcial
+                              </Badge>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
+                            onClick={() => deleteFueling(row.id)}
+                            title="Excluir abastecimento"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 pt-2.5 text-xs">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Odômetro</span>
+                            <span className="font-mono font-bold text-foreground">
+                              {row.odometer.toLocaleString('pt-BR')} km
+                            </span>
+                            {row.distance ? (
+                              <span className="text-[10px] text-primary font-mono block">+{row.distance} km</span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground block">Inicial</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Volume / Custo</span>
+                            <span className="font-mono font-medium text-foreground block">
+                              {row.liters.toFixed(2)} L
+                            </span>
+                            {row.cost ? (
+                              <span className="text-[10px] text-muted-foreground font-mono">{formatMoney(row.cost)}</span>
+                            ) : null}
+                          </div>
+
+                          <div className="text-right flex flex-col justify-center">
+                            <span className="text-[10px] text-muted-foreground block">Rendimento</span>
+                            {row.efficiency > 0 ? (
+                              <span className="text-sm font-bold font-mono text-primary">
+                                {row.efficiency.toFixed(1)} km/L
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {row.isBase ? '—' : 'Parcial'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop & Tablet View: Table */}
+              <Card className="border-border shadow-xs overflow-hidden hidden sm:block">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader className="bg-muted/40">
@@ -1932,7 +2286,7 @@ export default function Page() {
             </motion.div>
           )}
 
-          {/* TAB 4: MEU VEÍCULO */}
+          {/* TAB 4: MINHA GARAGEM */}
           {activeTab === 'garage' && (
             <motion.div
               key="garage"
@@ -1943,84 +2297,146 @@ export default function Page() {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">Meu Veículo</h1>
-                <p className="text-xs text-muted-foreground">
-                  Gerencie as informações e fotos da sua motocicleta cadastrada
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground">Minha Garagem</h1>
+                  <p className="text-xs text-muted-foreground">
+                    Gerencie todos os seus veículos, alterne a moto ativa e acompanhe odômetros individuais
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setIsGarageDialogOpen(true)}
+                  className="text-xs h-9 gap-1.5 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-xs"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Cadastrar Veículo</span>
+                </Button>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-3">
-                {/* Photo showcase */}
-                <div className="md:col-span-1">
-                  <Card className="border-border shadow-xs overflow-hidden">
-                    <div className="relative aspect-square w-full bg-muted/40 flex items-center justify-center border-b border-border">
-                      {moto.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={moto.photoUrl} alt={moto.model} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
-                          <Bike className="h-16 w-16 mb-2 opacity-30" />
-                          <p className="text-xs">Nenhuma foto cadastrada</p>
-                        </div>
-                      )}
-                    </div>
-                    <CardContent className="p-4 space-y-3">
-                      <Button
-                        onClick={openMotoDialog}
-                        className="w-full text-xs h-9 gap-1.5 cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        <Camera className="h-4 w-4" />
-                        {moto.photoUrl ? 'Alterar Foto' : 'Adicionar Foto'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
+              {/* Grid of registered motorcycles */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {motos.map(m => {
+                  const isActive = m.id === currentMoto.id
+                  const motoFuelings = fuelings.filter(f => f.motoId === m.id)
+                  const motoOdometer = motoFuelings.length > 0 ? Math.max(...motoFuelings.map(f => f.odometer)) : 0
 
-                {/* Specs and Details */}
-                <div className="md:col-span-2 space-y-4">
-                  <Card className="border-border shadow-xs">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <div>
-                        <CardTitle className="text-base font-bold">{moto.model || 'Minha Moto'}</CardTitle>
-                        <CardDescription className="text-xs">Informações técnicas cadastradas</CardDescription>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={openMotoDialog} className="text-xs h-8 gap-1.5 cursor-pointer hover:border-primary/40 hover:text-primary">
-                        <Pencil className="h-3.5 w-3.5" /> Editar
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="space-y-3 pt-2">
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="rounded-lg border border-border p-3 bg-muted/20">
-                          <span className="text-muted-foreground">Apelido</span>
-                          <p className="font-semibold text-foreground text-sm mt-0.5">{moto.name || 'Sem apelido'}</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3 bg-muted/20">
-                          <span className="text-muted-foreground">Placa</span>
-                          <p className="font-semibold text-foreground text-sm font-mono mt-0.5">{moto.plate || 'Não informada'}</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3 bg-muted/20">
-                          <span className="text-muted-foreground">Ano do Modelo</span>
-                          <p className="font-semibold text-foreground text-sm mt-0.5">{moto.year || 'Não informado'}</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3 bg-muted/20">
-                          <span className="text-muted-foreground">Odômetro Atual</span>
-                          <p className="font-semibold text-foreground text-sm font-mono mt-0.5">{currentOdometer.toLocaleString('pt-BR')} km</p>
+                  return (
+                    <Card
+                      key={m.id}
+                      className={`overflow-hidden transition-all border ${
+                        isActive
+                          ? 'border-primary shadow-sm ring-1 ring-primary/40 bg-card'
+                          : 'border-border/80 hover:border-primary/40 bg-card'
+                      }`}
+                    >
+                      {/* Photo header */}
+                      <div className="relative aspect-video w-full bg-muted/40 flex items-center justify-center border-b border-border overflow-hidden group">
+                        {m.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={m.photoUrl} alt={m.model} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+                            <Bike className="h-12 w-12 mb-1 opacity-30" />
+                            <p className="text-[11px]">Sem foto cadastrada</p>
+                          </div>
+                        )}
+                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                          {isActive ? (
+                            <Badge className="bg-emerald-600 text-white text-[10px] font-semibold shadow-xs">
+                              Ativa no Painel
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-background/80 backdrop-blur-xs text-[10px]">
+                              Garagem
+                            </Badge>
+                          )}
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border/80 bg-muted/30 p-4 space-y-2 mt-4">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
-                          <span className="text-xs font-semibold">Dica de Manutenção</span>
+                      <CardContent className="p-4 space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-base font-bold text-foreground truncate">
+                              {m.model || m.name}
+                            </h3>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{m.name || 'Sem apelido'}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Mantenha os pneus calibrados semanalmente e a corrente lubrificada para obter o melhor rendimento de combustível.
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-lg border border-border/80 p-2 bg-muted/20">
+                            <span className="text-[10px] text-muted-foreground block">Placa</span>
+                            <span className="font-semibold font-mono text-foreground">{m.plate || '—'}</span>
+                          </div>
+                          <div className="rounded-lg border border-border/80 p-2 bg-muted/20">
+                            <span className="text-[10px] text-muted-foreground block">Ano</span>
+                            <span className="font-semibold text-foreground">{m.year || '—'}</span>
+                          </div>
+                          <div className="rounded-lg border border-border/80 p-2 bg-muted/20">
+                            <span className="text-[10px] text-muted-foreground block">Odômetro</span>
+                            <span className="font-semibold font-mono text-foreground">
+                              {motoOdometer > 0 ? `${motoOdometer.toLocaleString('pt-BR')} km` : '0 km'}
+                            </span>
+                          </div>
+                          <div className="rounded-lg border border-border/80 p-2 bg-muted/20">
+                            <span className="text-[10px] text-muted-foreground block">Abastecimentos</span>
+                            <span className="font-semibold text-foreground">{motoFuelings.length} reg.</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          {!isActive ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleSelectMoto(m.id)}
+                              className="flex-1 text-xs h-8 gap-1.5 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              Usar no Painel
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled
+                              className="flex-1 text-xs h-8 gap-1.5 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-semibold bg-emerald-500/5"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Em Uso
+                            </Button>
+                          )}
+
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedMotoId(m.id)
+                              openMotoDialog()
+                            }}
+                            className="h-8 w-8 cursor-pointer hover:border-primary/40"
+                            title="Editar dados da moto"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+
+                {/* Add new card placeholder */}
+                <Card
+                  onClick={() => setIsGarageDialogOpen(true)}
+                  className="border-dashed border-2 border-border/80 hover:border-primary/60 bg-muted/10 hover:bg-muted/30 transition-all flex flex-col items-center justify-center p-8 text-center cursor-pointer min-h-[280px]"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3">
+                    <Plus className="h-6 w-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-foreground">Adicionar Outro Veículo</h4>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+                    Cadastre uma nova moto para gerenciar consumo e odômetro separadamente
+                  </p>
+                </Card>
               </div>
             </motion.div>
           )}
@@ -2261,6 +2677,51 @@ export default function Page() {
           )}
         </main>
       </div>
+
+      {/* ===================== NATIVE MOBILE BOTTOM BAR ===================== */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-card/95 backdrop-blur-md border-t border-border px-2 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-lg">
+        {navItems.map(item => {
+          const Icon = item.icon
+          const isActive = activeTab === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveTab(item.id)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all cursor-pointer relative min-w-[54px] ${
+                isActive
+                  ? 'text-primary font-bold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <div className="relative">
+                <Icon className={`h-4.5 w-4.5 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                {'count' in item && item.count !== undefined && item.count > 0 && (
+                  <span className="absolute -top-1 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-mono font-bold text-primary-foreground">
+                    {item.count}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] mt-0.5 tracking-tight">
+                {item.id === 'dashboard'
+                  ? 'Painel'
+                  : item.id === 'statistics'
+                  ? 'Métricas'
+                  : item.id === 'history'
+                  ? 'Histórico'
+                  : item.id === 'garage'
+                  ? 'Garagem'
+                  : 'Ajustes'}
+              </span>
+              {isActive && (
+                <div className="absolute -bottom-0.5 h-0.5 w-5 rounded-full bg-primary" />
+              )}
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }

@@ -201,7 +201,7 @@ export async function quickDemoLoginAction(
         id: 1,
         name: 'Eduardo Ramos',
         email: 'eduardo@mototracker.app',
-        role: 'Piloto Proprietário'
+        role: 'Proprietário'
       }
     }
   } catch (error) {
@@ -220,7 +220,7 @@ export async function quickDemoLoginAction(
               id: 1,
               name: 'Eduardo Ramos',
               email: 'eduardo@mototracker.app',
-              role: 'Piloto Proprietário'
+              role: 'Proprietário'
             }
     }
   }
@@ -380,6 +380,11 @@ export async function syncClerkUserAction(payload: {
 // ======================== MOTORCYCLE ACTIONS ========================
 
 export async function getMoto(userId?: number): Promise<Moto> {
+  const motos = await getMotos(userId)
+  return motos[0]
+}
+
+export async function getMotos(userId?: number): Promise<Moto[]> {
   try {
     let rows: any[] = []
     if (userId) {
@@ -387,8 +392,7 @@ export async function getMoto(userId?: number): Promise<Moto> {
         SELECT id, name, model, plate, year, photo_url as "photoUrl"
         FROM motos
         WHERE user_id = ${userId}
-        ORDER BY id ASC
-        LIMIT 1;
+        ORDER BY id ASC;
       `
     }
 
@@ -396,32 +400,54 @@ export async function getMoto(userId?: number): Promise<Moto> {
       rows = await sql`
         SELECT id, name, model, plate, year, photo_url as "photoUrl"
         FROM motos
-        ORDER BY id ASC
-        LIMIT 1;
+        ORDER BY id ASC;
       `
     }
 
     if (rows.length === 0) {
-      return {
+      return [{
         id: 1,
         name: 'Minha Moto',
         model: 'Honda CB 300F Twister',
         plate: 'BRA-2E19',
         year: '2024',
         photoUrl: ''
-      }
+      }]
     }
-    return rows[0] as Moto
+    return rows as Moto[]
   } catch (error) {
-    console.error('Error fetching moto:', error)
-    return {
+    console.error('Error fetching motos:', error)
+    return [{
       id: 1,
       name: 'Minha Moto',
       model: 'Honda CB 300F Twister',
       plate: 'BRA-2E19',
       year: '2024',
       photoUrl: ''
-    }
+    }]
+  }
+}
+
+export async function addMotoAction(
+  data: {
+    name: string
+    model: string
+    plate: string
+    year: string
+    photoUrl: string
+  },
+  userId?: number
+): Promise<{ success: boolean; moto?: Moto; error?: string }> {
+  try {
+    const inserted = await sql`
+      INSERT INTO motos (user_id, name, model, plate, year, photo_url)
+      VALUES (${userId || null}, ${data.name}, ${data.model}, ${data.plate}, ${data.year}, ${data.photoUrl})
+      RETURNING id, name, model, plate, year, photo_url as "photoUrl";
+    `
+    return { success: true, moto: inserted[0] as Moto }
+  } catch (error) {
+    console.error('Error adding moto:', error)
+    return { success: false, error: String(error) }
   }
 }
 
@@ -433,14 +459,29 @@ export async function updateMotoAction(
     year: string
     photoUrl: string
   },
-  userId?: number
+  userId?: number,
+  motoId?: number
 ) {
   try {
+    if (motoId) {
+      await sql`
+        UPDATE motos
+        SET name = ${data.name},
+            model = ${data.model},
+            plate = ${data.plate},
+            year = ${data.year},
+            photo_url = ${data.photoUrl},
+            updated_at = NOW()
+        WHERE id = ${motoId};
+      `
+      return { success: true }
+    }
+
     let existing: any[] = []
     if (userId) {
-      existing = await sql`SELECT id FROM motos WHERE user_id = ${userId} LIMIT 1;`
+      existing = await sql`SELECT id FROM motos WHERE user_id = ${userId} ORDER BY id ASC LIMIT 1;`
     } else {
-      existing = await sql`SELECT id FROM motos LIMIT 1;`
+      existing = await sql`SELECT id FROM motos ORDER BY id ASC LIMIT 1;`
     }
 
     if (existing.length === 0) {
@@ -463,6 +504,27 @@ export async function updateMotoAction(
     return { success: true }
   } catch (error) {
     console.error('Error updating moto:', error)
+    return { success: false, error: String(error) }
+  }
+}
+
+export async function deleteMotoAction(motoId: number, userId?: number) {
+  try {
+    // Prevent deletion if user only has 1 moto
+    if (userId) {
+      const userMotos = await sql`SELECT id FROM motos WHERE user_id = ${userId};`
+      if (userMotos.length <= 1) {
+        return { success: false, error: 'Você precisa manter pelo menos um veículo cadastrado na sua garagem.' }
+      }
+    }
+
+    // Delete fuelings for this moto
+    await sql`DELETE FROM fuelings WHERE moto_id = ${motoId};`
+    // Delete the moto
+    await sql`DELETE FROM motos WHERE id = ${motoId};`
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting moto:', error)
     return { success: false, error: String(error) }
   }
 }
@@ -495,6 +557,7 @@ export async function getFuelings(userId?: number): Promise<Fueling[]> {
 
 export async function addFuelingAction(
   fueling: {
+    motoId?: number
     date: string
     odometer: number
     liters: number
@@ -504,18 +567,21 @@ export async function addFuelingAction(
   userId?: number
 ) {
   try {
-    let motos: any[] = []
-    if (userId) {
-      motos = await sql`SELECT id FROM motos WHERE user_id = ${userId} LIMIT 1;`
-    } else {
-      motos = await sql`SELECT id FROM motos LIMIT 1;`
+    let motoId = fueling.motoId
+    if (!motoId) {
+      let motos: any[] = []
+      if (userId) {
+        motos = await sql`SELECT id FROM motos WHERE user_id = ${userId} ORDER BY id ASC LIMIT 1;`
+      } else {
+        motos = await sql`SELECT id FROM motos ORDER BY id ASC LIMIT 1;`
+      }
+      motoId = motos[0]?.id || 1
     }
-    const motoId = motos[0]?.id || 1
 
     const inserted = await sql`
       INSERT INTO fuelings (moto_id, user_id, date, odometer, liters, cost, is_full)
       VALUES (${motoId}, ${userId || null}, ${fueling.date}, ${fueling.odometer}, ${fueling.liters}, ${fueling.cost}, ${fueling.full})
-      RETURNING id, date, odometer, CAST(liters AS FLOAT) as liters, CAST(cost AS FLOAT) as cost, is_full as full;
+      RETURNING id, moto_id as "motoId", date, odometer, CAST(liters AS FLOAT) as liters, CAST(cost AS FLOAT) as cost, is_full as full;
     `
     return { success: true, fueling: inserted[0] as Fueling }
   } catch (error) {
