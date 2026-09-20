@@ -158,19 +158,19 @@ export default function Page() {
   // Authentication & Session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
 
-  // Connected User State (SaaS Profile)
+  // Connected User State
   const [userProfile, setUserProfile] = useState<AuthUser>({
     id: 1,
     name: 'Eduardo Ramos',
     email: 'eduardo@mototracker.app',
-    role: 'Piloto Proprietário'
+    role: 'Proprietário'
   })
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [userForm, setUserForm] = useState<AuthUser>({
     id: 1,
     name: 'Eduardo Ramos',
     email: 'eduardo@mototracker.app',
-    role: 'Piloto Proprietário'
+    role: 'Proprietário'
   })
 
   // Load auth state & user profile from localStorage or OAuth redirect
@@ -199,9 +199,13 @@ export default function Page() {
         if (parsed.authenticated) {
           setIsAuthenticated(true)
           if (parsed.user) {
-            setUserProfile(parsed.user)
-            setUserForm(parsed.user)
-            loadData(parsed.user.id)
+            const cleanUser = {
+              ...parsed.user,
+              role: 'Conta Verificada'
+            }
+            setUserProfile(cleanUser)
+            setUserForm(cleanUser)
+            loadData(cleanUser.id)
             return
           }
         }
@@ -905,9 +909,11 @@ export default function Page() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground flex items-center gap-1.5">
-              <Award className="h-3.5 w-3.5 text-primary" /> Identificação
+              <Award className="h-3.5 w-3.5 text-primary" /> Conta
             </span>
-            <span className="font-medium text-foreground">{userProfile.role}</span>
+            <span className="font-medium text-foreground">
+              {userProfile.authProvider === 'google' ? 'Google' : userProfile.authProvider === 'github' ? 'GitHub' : 'Verificada'}
+            </span>
           </div>
         </div>
 
@@ -918,7 +924,7 @@ export default function Page() {
               id="user-name"
               value={userForm.name}
               onChange={e => setUserForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Ex: Eduardo Ramos"
+              placeholder="Ex: Eduardo"
               required
               className="text-xs"
             />
@@ -933,17 +939,6 @@ export default function Page() {
               onChange={e => setUserForm(prev => ({ ...prev, email: e.target.value }))}
               placeholder="seuemail@exemplo.com"
               required
-              className="text-xs"
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="user-role" className="text-xs font-semibold">Função / Cargo</Label>
-            <Input
-              id="user-role"
-              value={userForm.role}
-              onChange={e => setUserForm(prev => ({ ...prev, role: e.target.value }))}
-              placeholder="Ex: Proprietário"
               className="text-xs"
             />
           </div>

@@ -73,7 +73,7 @@ export async function loginAction(
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role || 'Piloto Proprietário'
+        role: user.role || 'Usuário'
       }
     }
   } catch (error) {
@@ -125,7 +125,7 @@ export async function registerAction(
     const passwordHash = hashPassword(password)
     const inserted = await sql`
       INSERT INTO users (name, email, password_hash, role)
-      VALUES (${trimmedName}, ${normalizedEmail}, ${passwordHash}, 'Piloto Proprietário')
+      VALUES (${trimmedName}, ${normalizedEmail}, ${passwordHash}, 'Usuário')
       RETURNING id, name, email, role;
     `
 
@@ -260,7 +260,7 @@ export async function socialLoginAction(payload: {
           id: u.id,
           name: u.name,
           email: u.email,
-          role: u.role || (payload.provider === 'github' ? 'Piloto Desenvolvedor' : 'Piloto Verificado Google'),
+          role: u.role || (payload.provider === 'github' ? 'GitHub' : 'Google'),
           authProvider: payload.provider,
           avatarUrl: payload.avatarUrl || u.avatarUrl || ''
         }
@@ -269,7 +269,7 @@ export async function socialLoginAction(payload: {
 
     // New user registered via social provider
     const randomPass = hashPassword(`social_${Date.now()}_${Math.random()}`)
-    const role = payload.provider === 'github' ? 'Piloto Desenvolvedor' : 'Piloto Verificado Google'
+    const role = payload.provider === 'github' ? 'GitHub' : 'Google'
 
     const inserted = await sql`
       INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
@@ -341,7 +341,7 @@ export async function syncClerkUserAction(payload: {
           id: u.id,
           name: payload.name || u.name,
           email: u.email,
-          role: u.role || 'Piloto Verificado',
+          role: u.role || 'Conta Verificada',
           authProvider,
           avatarUrl: payload.avatarUrl || u.avatarUrl || ''
         }
@@ -351,7 +351,7 @@ export async function syncClerkUserAction(payload: {
     const randomPass = hashPassword(`clerk_${Date.now()}_${payload.clerkId}`)
     const inserted = await sql`
       INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
-      VALUES (${payload.name.trim() || 'Piloto'}, ${normalizedEmail}, ${randomPass}, 'Piloto Verificado', ${authProvider}, ${payload.avatarUrl || ''})
+      VALUES (${payload.name.trim() || 'Usuário'}, ${normalizedEmail}, ${randomPass}, 'Conta Verificada', ${authProvider}, ${payload.avatarUrl || ''})
       RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
     `
     const newUser = inserted[0]
