@@ -8,6 +8,8 @@ export type AuthUser = {
   name: string
   email: string
   role: string
+  authProvider?: 'email' | 'google' | 'github'
+  avatarUrl?: string
 }
 
 export type Moto = {
@@ -220,6 +222,84 @@ export async function quickDemoLoginAction(
               email: 'eduardo@mototracker.app',
               role: 'Piloto Proprietário'
             }
+    }
+  }
+}
+
+export async function socialLoginAction(payload: {
+  provider: 'google' | 'github'
+  name: string
+  email: string
+  avatarUrl?: string
+}): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  try {
+    const normalizedEmail = payload.email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      return { success: false, error: 'E-mail inválido fornecido pelo provedor social.' }
+    }
+
+    const existing = await sql`
+      SELECT id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl"
+      FROM users
+      WHERE LOWER(email) = ${normalizedEmail}
+      LIMIT 1;
+    `
+
+    if (existing.length > 0) {
+      const u = existing[0]
+      await sql`
+        UPDATE users
+        SET auth_provider = ${payload.provider},
+            avatar_url = COALESCE(NULLIF(${payload.avatarUrl || ''}, ''), avatar_url),
+            updated_at = NOW()
+        WHERE id = ${u.id};
+      `
+      return {
+        success: true,
+        user: {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role || (payload.provider === 'github' ? 'Piloto Desenvolvedor' : 'Piloto Verificado Google'),
+          authProvider: payload.provider,
+          avatarUrl: payload.avatarUrl || u.avatarUrl || ''
+        }
+      }
+    }
+
+    // New user registered via social provider
+    const randomPass = hashPassword(`social_${Date.now()}_${Math.random()}`)
+    const role = payload.provider === 'github' ? 'Piloto Desenvolvedor' : 'Piloto Verificado Google'
+
+    const inserted = await sql`
+      INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
+      VALUES (${payload.name.trim()}, ${normalizedEmail}, ${randomPass}, ${role}, ${payload.provider}, ${payload.avatarUrl || ''})
+      RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
+    `
+    const newUser = inserted[0]
+
+    // Create starter motorcycle for this new social user
+    await sql`
+      INSERT INTO motos (user_id, name, model, plate, year, photo_url)
+      VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
+    `
+
+    return {
+      success: true,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        authProvider: payload.provider,
+        avatarUrl: newUser.avatarUrl || ''
+      }
+    }
+  } catch (error) {
+    console.error('Erro na ação de socialLoginAction:', error)
+    return {
+      success: false,
+      error: 'Erro ao conectar com provedor social. Tente novamente.'
     }
   }
 }

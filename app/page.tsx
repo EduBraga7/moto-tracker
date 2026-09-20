@@ -1128,6 +1128,12 @@ export default function Page() {
                   <span className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors leading-tight">
                     {userProfile.name}
                   </span>
+                  {userProfile.authProvider === 'google' && (
+                    <span className="text-[9px] bg-blue-500/10 text-blue-500 font-mono px-1 py-0.2 rounded border border-blue-500/30 shrink-0">Google</span>
+                  )}
+                  {userProfile.authProvider === 'github' && (
+                    <span className="text-[9px] bg-zinc-800 text-zinc-300 font-mono px-1 py-0.2 rounded border border-zinc-700 shrink-0">GitHub</span>
+                  )}
                 </div>
                 <span className="text-[10px] text-muted-foreground truncate leading-tight font-mono">
                   {userProfile.email}
