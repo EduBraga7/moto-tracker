@@ -172,9 +172,26 @@ export default function Page() {
     role: 'Piloto Proprietário'
   })
 
-  // Load auth state & user profile from localStorage
+  // Load auth state & user profile from localStorage or OAuth redirect
   useEffect(() => {
     try {
+      // Check if redirected from Google/Social OAuth callback
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search)
+        const authSuccess = searchParams.get('auth_success')
+        const userParam = searchParams.get('user')
+        if (authSuccess && userParam) {
+          try {
+            const user = JSON.parse(decodeURIComponent(userParam)) as AuthUser
+            handleLogin(user)
+            window.history.replaceState({}, document.title, window.location.pathname)
+            return
+          } catch (e) {
+            console.error('Failed to parse OAuth user param:', e)
+          }
+        }
+      }
+
       const savedAuth = localStorage.getItem('moto_tracker_auth')
       if (savedAuth) {
         const parsed = JSON.parse(savedAuth)
