@@ -37,12 +37,12 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
-
-export interface AuthUser {
-  name: string
-  email: string
-  role: string
-}
+import {
+  loginAction,
+  registerAction,
+  quickDemoLoginAction,
+  type AuthUser
+} from '@/app/actions'
 
 interface LoginViewProps {
   onLogin: (user: AuthUser) => void
@@ -83,35 +83,12 @@ export function LoginView({ onLogin }: LoginViewProps) {
   }
 
   // Smooth auth sequence
-  const executeAuthSequence = (authUser: AuthUser) => {
-    setLoading(true)
-    setError(null)
-    setLoadingStep('Conectando ao banco de dados...')
-
-    setTimeout(() => {
-      setLoadingStep('Autenticando sessão...')
-    }, 250)
-
-    setTimeout(() => {
-      setLoadingStep('Carregando dados do veículo e abastecimentos...')
-    }, 500)
-
-    setTimeout(() => {
-      setLoadingStep('Acesso autorizado. Abrindo painel...')
-    }, 750)
-
-    setTimeout(() => {
-      setLoading(false)
-      onLogin(authUser)
-    }, 950)
-  }
-
-  // Standard form submit
-  const handleSubmit = (e: React.FormEvent) => {
+  // Standard form submit with Neon database authentication
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    if (!email || !password) {
+    if (!email.trim() || !password) {
       setError('Por favor, informe seu e-mail e sua senha.')
       return
     }
@@ -121,24 +98,74 @@ export function LoginView({ onLogin }: LoginViewProps) {
       return
     }
 
-    const displayName = mode === 'signup' ? name.trim() : (email.split('@')[0] || 'Usuário')
-    executeAuthSequence({
-      name: displayName.charAt(0).toUpperCase() + displayName.slice(1),
-      email,
-      role: 'Proprietário'
-    })
+    setLoading(true)
+    setLoadingStep(
+      mode === 'signin'
+        ? 'Consultando credenciais no Neon Postgres...'
+        : 'Criando sua conta e garagem no Neon Postgres...'
+    )
+
+    try {
+      if (mode === 'signin') {
+        const res = await loginAction(email, password)
+        if (!res.success || !res.user) {
+          setError(res.error || 'Falha ao autenticar. Verifique seus dados.')
+          setLoading(false)
+          return
+        }
+
+        setLoadingStep('Credenciais autenticadas! Carregando telemetria...')
+        setTimeout(() => {
+          setLoading(false)
+          onLogin(res.user!)
+        }, 400)
+      } else {
+        const res = await registerAction(name, email, password)
+        if (!res.success || !res.user) {
+          setError(res.error || 'Falha ao criar conta. Tente novamente.')
+          setLoading(false)
+          return
+        }
+
+        setLoadingStep('Conta criada com sucesso! Inicializando sua garagem...')
+        setTimeout(() => {
+          setLoading(false)
+          onLogin(res.user!)
+        }, 400)
+      }
+    } catch (err) {
+      console.error('Erro na autenticação:', err)
+      setError('Erro de comunicação com o servidor Neon. Tente novamente.')
+      setLoading(false)
+    }
   }
 
-  // Quick 1-Click Guest/Demo Access
-  const handleDemoAccess = () => {
-    setEmail('demo@mototracker.app')
-    setPassword('demo-session-2026')
-    setName('Usuário Convidado')
-    executeAuthSequence({
-      name: 'Usuário Convidado',
-      email: 'demo@mototracker.app',
-      role: 'Proprietário (Modo Demonstração)'
-    })
+  // Quick 1-Click Recruiter/Demo Access
+  const handleDemoAccess = async () => {
+    setLoading(true)
+    setError(null)
+    setLoadingStep('Conectando ao perfil de demonstração no Neon...')
+
+    try {
+      const res = await quickDemoLoginAction('recruiter')
+      if (res.user) {
+        setEmail(res.user.email)
+        setPassword('demo-portfolio-2026')
+        setLoadingStep('Acesso autorizado! Carregando painel do avaliador...')
+        setTimeout(() => {
+          setLoading(false)
+          onLogin(res.user!)
+        }, 400)
+      }
+    } catch {
+      setLoading(false)
+      onLogin({
+        id: 2,
+        name: 'Avaliador / Recrutador',
+        email: 'recrutador@tech-review.com',
+        role: 'Avaliador Convidado (Acesso Completo)'
+      })
+    }
   }
 
   // Handle forgot password request
@@ -616,13 +643,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 type="button"
                 variant="outline"
                 disabled={loading}
-                onClick={() => {
-                  executeAuthSequence({
-                    name: 'Usuário Google',
-                    email: 'usuario.google@gmail.com',
-                    role: 'Proprietário'
-                  })
-                }}
+                onClick={handleDemoAccess}
                 className="h-8.5 text-xs gap-2 border-border/80 hover:bg-muted cursor-pointer"
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
@@ -650,13 +671,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 type="button"
                 variant="outline"
                 disabled={loading}
-                onClick={() => {
-                  executeAuthSequence({
-                    name: 'Usuário GitHub',
-                    email: 'usuario.github@exemplo.com',
-                    role: 'Proprietário'
-                  })
-                }}
+                onClick={handleDemoAccess}
                 className="h-8.5 text-xs gap-2 border-border/80 hover:bg-muted cursor-pointer"
               >
                 <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">

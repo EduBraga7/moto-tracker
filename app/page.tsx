@@ -41,7 +41,7 @@ import {
   ShieldCheck,
   LogOut
 } from 'lucide-react'
-import { LoginView, type AuthUser } from '@/components/auth/login-view'
+import { LoginView } from '@/components/auth/login-view'
 import { useTheme } from 'next-themes'
 import {
   Area,
@@ -71,7 +71,8 @@ import {
   addFuelingAction,
   deleteFuelingAction,
   type Fueling,
-  type Moto
+  type Moto,
+  type AuthUser
 } from '@/app/actions'
 
 const defaultMoto: Moto = {
@@ -134,42 +135,41 @@ export default function Page() {
     }
   }
 
-  // Load backend data
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true)
-        const [loadedMoto, loadedFuelings] = await Promise.all([
-          getMoto(),
-          getFuelings()
-        ])
-        if (loadedMoto) setMoto(loadedMoto)
-        if (loadedFuelings && loadedFuelings.length > 0) {
-          setFuelings(loadedFuelings)
-        }
-      } catch (error) {
-        console.error('Falha ao carregar dados:', error)
-      } finally {
-        setLoading(false)
+  // Load backend data scoped by user
+  const loadData = async (userId?: number) => {
+    try {
+      setLoading(true)
+      const [loadedMoto, loadedFuelings] = await Promise.all([
+        getMoto(userId),
+        getFuelings(userId)
+      ])
+      if (loadedMoto) setMoto(loadedMoto)
+      if (loadedFuelings) {
+        setFuelings(loadedFuelings)
       }
+    } catch (error) {
+      console.error('Falha ao carregar dados:', error)
+    } finally {
+      setLoading(false)
     }
-    loadData()
-  }, [])
+  }
 
   // Authentication & Session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
 
   // Connected User State (SaaS Profile)
   const [userProfile, setUserProfile] = useState<AuthUser>({
+    id: 1,
     name: 'Eduardo Ramos',
     email: 'eduardo@mototracker.app',
-    role: 'Proprietário'
+    role: 'Piloto Proprietário'
   })
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [userForm, setUserForm] = useState<AuthUser>({
+    id: 1,
     name: 'Eduardo Ramos',
     email: 'eduardo@mototracker.app',
-    role: 'Proprietário'
+    role: 'Piloto Proprietário'
   })
 
   // Load auth state & user profile from localStorage
@@ -183,8 +183,9 @@ export default function Page() {
           if (parsed.user) {
             setUserProfile(parsed.user)
             setUserForm(parsed.user)
+            loadData(parsed.user.id)
+            return
           }
-          return
         }
       }
       // If nothing found in storage, prompt login screen
@@ -207,6 +208,7 @@ export default function Page() {
     } catch {
       // ignore
     }
+    loadData(user.id)
   }
 
   const handleLogout = () => {
@@ -257,7 +259,7 @@ export default function Page() {
         plate: motoForm.plate,
         year: motoForm.year,
         photoUrl: motoForm.photoUrl
-      })
+      }, userProfile.id)
       setIsMotoDialogOpen(false)
     } catch (err) {
       console.error('Erro ao salvar moto:', err)
@@ -562,7 +564,7 @@ export default function Page() {
         liters,
         cost: cost || 0,
         full: form.full
-      })
+      }, userProfile.id)
 
       if (res.success && res.fueling) {
         setFuelings(prev => [res.fueling!, ...prev])
