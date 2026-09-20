@@ -40,8 +40,6 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   loginAction,
   registerAction,
-  quickDemoLoginAction,
-  socialLoginAction,
   type AuthUser
 } from '@/app/actions'
 
@@ -62,45 +60,32 @@ export function LoginView({ onLogin }: LoginViewProps) {
   const [forgotSubmitted, setForgotSubmitted] = useState(false)
   const [forgotLoading, setForgotLoading] = useState(false)
 
-  // Google OAuth real setup modal
-  const [isGoogleSetupModalOpen, setIsGoogleSetupModalOpen] = useState(false)
-  const [customClientId, setCustomClientId] = useState('')
-
-  // Open OAuth popup window
-  const openOAuthPopup = (provider: 'google' | 'github') => {
-    const width = provider === 'google' ? 460 : 520
-    const height = 620
-    const left = typeof window !== 'undefined' ? Math.max(0, window.screen.width / 2 - width / 2) : 100
-    const top = typeof window !== 'undefined' ? Math.max(0, window.screen.height / 2 - height / 2) : 100
-    window.open(
-      provider === 'google' ? '/auth/google' : '/auth/github',
-      `${provider}_oauth`,
-      `width=${width},height=${height},top=${top},left=${left},status=no,toolbar=no,menubar=no,location=no`
-    )
-  }
-
-  // Handle Google OAuth trigger: redirect to accounts.google.com if configured, or open setup guide
+  // Standard OAuth triggers
   const handleGoogleLogin = () => {
-    if (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
-      window.location.href = '/api/auth/google'
-      return
-    }
-    setIsGoogleSetupModalOpen(true)
+    window.location.href = '/api/auth/google'
   }
 
-  // Handle OAuth message received from popup window
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (typeof window !== 'undefined' && event.origin !== window.location.origin) return
+  const handleGithubLogin = () => {
+    window.location.href = '/api/auth/github'
+  }
 
-      if (event.data?.type === 'OAUTH_SUCCESS' && event.data?.user) {
-        const { provider, user } = event.data
-        handleSocialAuth(provider, user.name, user.email, user.avatarUrl)
+  // Handle URL OAuth feedback
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const oauthErr = params.get('oauth_error')
+      if (oauthErr) {
+        if (oauthErr === 'google_missing_client_id') {
+          setError('Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local para login com Google.')
+        } else if (oauthErr === 'github_missing_client_id') {
+          setError('Configure GITHUB_CLIENT_ID e GITHUB_CLIENT_SECRET no .env.local para login com GitHub.')
+        } else if (oauthErr === 'google_cancelled' || oauthErr === 'github_cancelled') {
+          setError('Login social cancelado.')
+        } else {
+          setError('Falha na autenticação social. Verifique suas credenciais.')
+        }
       }
     }
-
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
   }, [])
 
   // Form states
@@ -178,75 +163,6 @@ export function LoginView({ onLogin }: LoginViewProps) {
     } catch (err) {
       console.error('Erro na autenticação:', err)
       setError('Erro de comunicação com o servidor Neon. Tente novamente.')
-      setLoading(false)
-    }
-  }
-
-  // Quick 1-Click Recruiter/Demo Access
-  const handleDemoAccess = async () => {
-    setLoading(true)
-    setError(null)
-    setLoadingStep('Conectando ao perfil de demonstração no Neon...')
-
-    try {
-      const res = await quickDemoLoginAction('recruiter')
-      if (res.user) {
-        setEmail(res.user.email)
-        setPassword('demo-portfolio-2026')
-        setLoadingStep('Acesso autorizado! Carregando painel do avaliador...')
-        setTimeout(() => {
-          setLoading(false)
-          onLogin(res.user!)
-        }, 400)
-      }
-    } catch {
-      setLoading(false)
-      onLogin({
-        id: 2,
-        name: 'Avaliador / Recrutador',
-        email: 'recrutador@tech-review.com',
-        role: 'Avaliador Convidado (Acesso Completo)'
-      })
-    }
-  }
-
-  // Handle OAuth Social Authentication (Google & GitHub)
-  const handleSocialAuth = async (
-    provider: 'google' | 'github',
-    socialName: string,
-    socialEmail: string,
-    socialAvatar?: string
-  ) => {
-    setLoading(true)
-    setError(null)
-    setLoadingStep(
-      provider === 'google'
-        ? 'Autenticando via Google Accounts...'
-        : 'Autorizando OAuth via GitHub...'
-    )
-
-    try {
-      const res = await socialLoginAction({
-        provider,
-        name: socialName,
-        email: socialEmail,
-        avatarUrl: socialAvatar
-      })
-
-      if (!res.success || !res.user) {
-        setError(res.error || 'Falha ao autenticar com provedor social.')
-        setLoading(false)
-        return
-      }
-
-      setLoadingStep(`Conectado como ${socialName}! Carregando telemetria...`)
-      setTimeout(() => {
-        setLoading(false)
-        onLogin(res.user!)
-      }, 400)
-    } catch (err) {
-      console.error('Erro no login social:', err)
-      setError('Erro de conexão com o servidor Neon. Tente novamente.')
       setLoading(false)
     }
   }
@@ -754,7 +670,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 type="button"
                 variant="outline"
                 disabled={loading}
-                onClick={() => openOAuthPopup('github')}
+                onClick={handleGithubLogin}
                 className="h-8.5 text-xs gap-2 border-border/80 hover:bg-muted cursor-pointer"
               >
                 <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
@@ -763,29 +679,6 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 GitHub
               </Button>
             </div>
-          </div>
-
-          {/* Quick Demo Access */}
-          <div className="rounded-xl border border-border/80 bg-muted/30 p-2.5 flex items-center justify-between gap-2.5">
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-semibold text-foreground flex items-center gap-1">
-                <Sparkles className="h-3 w-3 text-primary" />
-                Quer testar antes de cadastrar?
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-tight">
-                Acesse uma demonstração com abastecimentos já preenchidos.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleDemoAccess}
-              disabled={loading}
-              className="text-xs font-semibold shrink-0 cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors h-7.5 px-2.5"
-            >
-              Demonstração
-            </Button>
           </div>
         </div>
 
@@ -878,111 +771,6 @@ export function LoginView({ onLogin }: LoginViewProps) {
               </DialogFooter>
             </form>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ================= GOOGLE CLOUD OAUTH MODAL (ACCOUNTS.GOOGLE.COM) ================= */}
-      <Dialog open={isGoogleSetupModalOpen} onOpenChange={setIsGoogleSetupModalOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border text-foreground">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <svg className="h-6 w-6 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-              </svg>
-              <div>
-                <DialogTitle className="text-base font-bold text-foreground">
-                  Login Oficial do Google (accounts.google.com)
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Como funciona a tela oficial do Google em produção
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2 text-xs">
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 text-xs space-y-1.5">
-              <p className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
-                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                Para abrir a tela oficial <span className="font-mono text-[11px] bg-background/50 px-1 py-0.5 rounded">accounts.google.com</span>:
-              </p>
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
-                O Google exige obrigatoriamente um <strong className="text-foreground">Client ID</strong> cadastrado no <strong className="text-foreground">Google Cloud Console</strong> para saber o nome e a logo do seu app. Sem ele, o Google bloqueia a requisição com o erro <code className="text-red-400 font-mono">400: invalid_client</code>.
-              </p>
-            </div>
-
-            {/* Step by step */}
-            <div className="space-y-1.5 border border-border/80 rounded-xl p-3 bg-muted/20">
-              <p className="font-semibold text-[11px] text-foreground uppercase tracking-wider font-mono">
-                Variáveis para seu .env.local:
-              </p>
-              <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 text-[11px] font-mono select-all overflow-x-auto border border-zinc-800">
-{`GOOGLE_CLIENT_ID="seu-id.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET="seu-secret"`}
-              </pre>
-              <p className="text-[10px] text-muted-foreground">
-                URI de redirecionamento autorizado no Google Cloud:
-                <br />
-                <code className="text-primary font-mono select-all">http://localhost:3000/api/auth/callback/google</code>
-              </p>
-            </div>
-
-            {/* Test with custom client id */}
-            <div className="space-y-1.5 pt-1">
-              <Label htmlFor="direct-client-id" className="text-xs font-medium">
-                Já tem um Client ID? Cole aqui para abrir a tela real agora:
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="direct-client-id"
-                  type="text"
-                  value={customClientId}
-                  onChange={e => setCustomClientId(e.target.value)}
-                  placeholder="Ex: 123456789-abc.apps.googleusercontent.com"
-                  className="h-9 text-xs font-mono"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    const id = customClientId.trim() || 'demo'
-                    const redirect = encodeURIComponent(`${window.location.origin}/api/auth/callback/google`)
-                    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${id}&redirect_uri=${redirect}&response_type=code&scope=openid%20email%20profile`
-                  }}
-                  className="h-9 text-xs shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  Abrir Google ↗
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2 border-t border-border/60">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setIsGoogleSetupModalOpen(false)
-                openOAuthPopup('google')
-              }}
-              className="text-xs h-8.5"
-            >
-              Usar Demonstração Popup
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => window.open('https://console.cloud.google.com/apis/credentials', '_blank')}
-              className="text-xs h-8.5 gap-1 bg-zinc-900 text-white hover:bg-zinc-800"
-            >
-              <span>Abrir Google Cloud Console</span>
-              <ArrowRight className="h-3 w-3" />
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
