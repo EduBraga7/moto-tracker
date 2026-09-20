@@ -63,11 +63,11 @@ export function LoginView({ onLogin }: LoginViewProps) {
 
   // Standard OAuth triggers
   const handleGoogleLogin = () => {
-    window.location.href = '/api/auth/google'
+    setError('O login social com Google usa o Clerk. Adicione as chaves do Clerk na Vercel e faça o redeploy para habilitá-lo.')
   }
 
   const handleGithubLogin = () => {
-    window.location.href = '/api/auth/github'
+    setError('O login social requer as chaves do Clerk configuradas na Vercel.')
   }
 
   // Handle URL OAuth feedback
@@ -77,14 +77,13 @@ export function LoginView({ onLogin }: LoginViewProps) {
       const oauthErr = params.get('oauth_error')
       if (oauthErr) {
         if (oauthErr === 'google_missing_client_id') {
-          setError('Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local para login com Google.')
-        } else if (oauthErr === 'github_missing_client_id') {
-          setError('Configure GITHUB_CLIENT_ID e GITHUB_CLIENT_SECRET no .env.local para login com GitHub.')
+          setError('O login social com Google usa o Clerk. Certifique-se de salvar as variáveis do Clerk na Vercel e fazer o redeploy.')
         } else if (oauthErr === 'google_cancelled' || oauthErr === 'github_cancelled') {
           setError('Login social cancelado.')
         } else {
           setError('Falha na autenticação social. Verifique suas credenciais.')
         }
+        window.history.replaceState({}, document.title, window.location.pathname)
       }
     }
   }, [])

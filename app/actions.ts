@@ -377,6 +377,24 @@ export async function syncClerkUserAction(payload: {
   }
 }
 
+export async function updateUserProfileAction(
+  userId: number,
+  data: { name: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await sql`
+      UPDATE users
+      SET name = ${data.name.trim()},
+          updated_at = NOW()
+      WHERE id = ${userId};
+    `
+    return { success: true }
+  } catch (error) {
+    console.error('Erro ao atualizar perfil do usuário:', error)
+    return { success: false, error: 'Falha ao atualizar dados no banco de dados.' }
+  }
+}
+
 // ======================== MOTORCYCLE ACTIONS ========================
 
 export async function getMoto(userId?: number): Promise<Moto> {

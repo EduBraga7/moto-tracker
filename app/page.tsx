@@ -74,6 +74,7 @@ import {
   getFuelings,
   addFuelingAction,
   deleteFuelingAction,
+  updateUserProfileAction,
   type Fueling,
   type Moto,
   type AuthUser
@@ -81,6 +82,7 @@ import {
 import { compressImage } from '@/lib/image-utils'
 import { WelcomeDialog, type OnboardingData } from '@/components/onboarding/welcome-dialog'
 import { GarageDialog } from '@/components/garage/garage-dialog'
+import { UserProfileDialog } from '@/components/profile/user-profile-dialog'
 
 const defaultMoto: Moto = {
   id: 1,
@@ -201,12 +203,6 @@ export default function Page() {
     role: 'Proprietário'
   })
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
-  const [userForm, setUserForm] = useState<AuthUser>({
-    id: 1,
-    name: 'Eduardo Ramos',
-    email: 'eduardo@mototracker.app',
-    role: 'Proprietário'
-  })
 
   // Load auth state & user profile from localStorage or OAuth redirect
   useEffect(() => {
@@ -239,7 +235,6 @@ export default function Page() {
               role: 'Conta Verificada'
             }
             setUserProfile(cleanUser)
-            setUserForm(cleanUser)
             loadData(cleanUser.id)
             return
           }
@@ -254,7 +249,6 @@ export default function Page() {
 
   const handleLogin = (user: AuthUser) => {
     setUserProfile(user)
-    setUserForm(user)
     setIsAuthenticated(true)
     try {
       localStorage.setItem('moto_tracker_auth', JSON.stringify({
@@ -278,13 +272,20 @@ export default function Page() {
     setIsUserDialogOpen(false)
   }
 
-  const saveUserProfile = (e: React.FormEvent) => {
-    e.preventDefault()
-    setUserProfile(userForm)
+  const handleSaveUserProfile = async (updated: AuthUser) => {
+    setUserProfile(updated)
     try {
-      localStorage.setItem('moto_user_profile', JSON.stringify(userForm))
+      localStorage.setItem('moto_user_profile', JSON.stringify(updated))
+      const savedAuth = localStorage.getItem('moto_tracker_auth')
+      if (savedAuth) {
+        const parsed = JSON.parse(savedAuth)
+        localStorage.setItem('moto_tracker_auth', JSON.stringify({ ...parsed, user: updated }))
+      }
     } catch {
       // ignore
+    }
+    if (updated.id) {
+      await updateUserProfileAction(updated.id, { name: updated.name })
     }
     setIsUserDialogOpen(false)
   }
@@ -407,19 +408,9 @@ export default function Page() {
         photoUrl: moto.photoUrl || ''
       }, userProfile.id)
 
-      // 2. If odometer was provided and there are no fuelings yet, register initial baseline
-      if (data.currentOdometer && fuelings.length === 0) {
-        const todayStr = new Date().toISOString().split('T')[0]
-        const addRes = await addFuelingAction({
-          date: todayStr,
-          odometer: data.currentOdometer,
-          liters: 10,
-          cost: 60,
-          full: true
-        }, userProfile.id)
-        if (addRes?.fueling) {
-          setFuelings([addRes.fueling])
-        }
+      // 2. If odometer was provided, save as baseline for first fueling prompt
+      if (data.currentOdometer && typeof window !== 'undefined') {
+        localStorage.setItem(`moto_baseline_odometer_${userProfile.id}`, String(data.currentOdometer))
       }
 
       // 3. Update local moto state
@@ -810,16 +801,8 @@ export default function Page() {
   ] as const
 
   // Dialogs
-  const NewFuelingDialog = () => (
+  const renderNewFuelingDialog = () => (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-      <DialogTrigger>
-        <Button size="sm" className="h-8.5 sm:h-9 px-2.5 sm:px-3 gap-1.5 font-medium shadow-xs cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Novo Abastecimento</span>
-          <span className="sm:hidden text-xs">Abastecer</span>
-        </Button>
-      </DialogTrigger>
-
       <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar Abastecimento</DialogTitle>
@@ -933,7 +916,7 @@ export default function Page() {
     </Dialog>
   )
 
-  const EditMotoDialog = () => (
+  const renderEditMotoDialog = () => (
     <Dialog open={isMotoDialogOpen} onOpenChange={setIsMotoDialogOpen}>
       <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -1082,125 +1065,7 @@ export default function Page() {
     </Dialog>
   )
 
-  const UserProfileDialog = () => (
-    <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-      <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-primary to-primary/80 flex items-center justify-center text-primary-foreground font-bold text-base shadow-sm">
-                {userInitials}
-              </div>
-              <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-background" />
-            </div>
-            <div>
-              <DialogTitle className="text-base font-bold flex items-center gap-2">
-                {userProfile.name}
-                <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-mono">
-                  Online
-                </Badge>
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                {userProfile.email}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
 
-        <div className="rounded-lg border border-border/80 bg-muted/40 p-3 space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary" /> Status da Sessão
-            </span>
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">Ativa & Conectada</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Award className="h-3.5 w-3.5 text-primary" /> Conta
-            </span>
-            <span className="font-medium text-foreground">
-              {userProfile.authProvider === 'google' ? 'Google' : userProfile.authProvider === 'github' ? 'GitHub' : 'Verificada'}
-            </span>
-          </div>
-        </div>
-
-        <form onSubmit={saveUserProfile} className="grid gap-3 pt-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="user-name" className="text-xs font-semibold">Nome Completo</Label>
-            <Input
-              id="user-name"
-              value={userForm.name}
-              onChange={e => setUserForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Ex: Eduardo"
-              required
-              className="text-xs"
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="user-email" className="text-xs font-semibold">E-mail</Label>
-              <span className="text-[10px] text-muted-foreground">Vinculado ao login</span>
-            </div>
-            <Input
-              id="user-email"
-              type="email"
-              value={userForm.email}
-              disabled
-              readOnly
-              className="text-xs bg-muted/60 text-muted-foreground cursor-not-allowed border-dashed select-none"
-            />
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsUserDialogOpen(false)}
-              className="flex-1 cursor-pointer text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              className="flex-1 cursor-pointer text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              Salvar Perfil
-            </Button>
-          </div>
-        </form>
-
-        <div className="border-t border-border pt-3 mt-1 space-y-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setIsUserDialogOpen(false)
-              setIsWelcomeOpen(true)
-            }}
-            className="w-full text-xs gap-2 cursor-pointer border-dashed text-muted-foreground hover:text-foreground"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Refazer Tour de Boas-Vindas & Questionário
-          </Button>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="w-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-2 cursor-pointer"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            Encerrar Sessão / Sair da Conta
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
 
   // Loading state while checking localStorage session
   if (isAuthenticated === null) {
@@ -1230,8 +1095,16 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">
-      <EditMotoDialog />
-      <UserProfileDialog />
+      {renderNewFuelingDialog()}
+      {renderEditMotoDialog()}
+      <UserProfileDialog
+        open={isUserDialogOpen}
+        onOpenChange={setIsUserDialogOpen}
+        userProfile={userProfile}
+        onSaveProfile={handleSaveUserProfile}
+        onRestartOnboarding={() => setIsWelcomeOpen(true)}
+        onLogout={handleLogout}
+      />
       <WelcomeDialog
         open={isWelcomeOpen}
         onOpenChange={setIsWelcomeOpen}
@@ -1378,10 +1251,7 @@ export default function Page() {
         <div className="border-t border-border p-3">
           <button
             type="button"
-            onClick={() => {
-              setUserForm(userProfile)
-              setIsUserDialogOpen(true)
-            }}
+            onClick={() => setIsUserDialogOpen(true)}
             className="group flex items-center justify-between w-full p-2 rounded-xl border border-border/70 bg-card hover:bg-muted/60 hover:border-border transition-all cursor-pointer shadow-2xs text-left"
             title="Gerenciar perfil do usuário conectado"
           >
@@ -1459,7 +1329,15 @@ export default function Page() {
             </Button>
 
             <ThemeToggle className="hidden sm:inline-flex" />
-            <NewFuelingDialog />
+            <Button
+              size="sm"
+              onClick={() => setIsDialogOpen(true)}
+              className="h-8.5 sm:h-9 px-2.5 sm:px-3 gap-1.5 font-medium shadow-xs cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Novo Abastecimento</span>
+              <span className="sm:hidden text-xs">Abastecer</span>
+            </Button>
           </div>
         </header>
 
@@ -2122,7 +2000,15 @@ export default function Page() {
                     Todos os registros de consumo e quilometragem da sua moto
                   </p>
                 </div>
-                <NewFuelingDialog />
+                <Button
+                  size="sm"
+                  onClick={() => setIsDialogOpen(true)}
+                  className="h-8.5 sm:h-9 px-2.5 sm:px-3 gap-1.5 font-medium shadow-xs cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Novo Abastecimento</span>
+                  <span className="sm:hidden text-xs">Abastecer</span>
+                </Button>
               </div>
 
               {/* Mobile View: Cards */}
@@ -2472,10 +2358,7 @@ export default function Page() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setUserForm(userProfile)
-                        setIsUserDialogOpen(true)
-                      }}
+                      onClick={() => setIsUserDialogOpen(true)}
                       className="text-xs h-8 gap-1.5 cursor-pointer hover:border-primary/40 hover:text-primary"
                     >
                       <Pencil className="h-3.5 w-3.5" /> Editar Perfil
