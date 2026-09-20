@@ -2,15 +2,9 @@
 
 import { sql } from '@/lib/db'
 import { hashPassword, verifyPassword } from '@/lib/auth'
+import { setSession, getSessionUser, clearSession, type SessionUser } from '@/lib/session'
 
-export type AuthUser = {
-  id: number
-  name: string
-  email: string
-  role: string
-  authProvider?: 'email' | 'google' | 'github'
-  avatarUrl?: string
-}
+export type AuthUser = SessionUser
 
 export type Moto = {
   id: number
@@ -32,6 +26,15 @@ export type Fueling = {
 }
 
 // ======================== AUTHENTICATION ACTIONS ========================
+
+export async function getCurrentUserAction(): Promise<AuthUser | null> {
+  return await getSessionUser()
+}
+
+export async function logoutAction(): Promise<{ success: boolean }> {
+  await clearSession()
+  return { success: true }
+}
 
 export async function loginAction(
   email: string,
@@ -67,14 +70,18 @@ export async function loginAction(
       }
     }
 
+    const authUser: AuthUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role || 'Usuário'
+    }
+
+    await setSession(authUser)
+
     return {
       success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role || 'Usuário'
-      }
+      user: authUser
     }
   } catch (error) {
     console.error('Erro na ação de login:', error)
@@ -137,14 +144,18 @@ export async function registerAction(
       VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
     `
 
+    const authUser: AuthUser = {
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role
+    }
+
+    await setSession(authUser)
+
     return {
       success: true,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
+      user: authUser
     }
   } catch (error) {
     console.error('Erro na ação de registro:', error)
@@ -169,59 +180,60 @@ export async function quickDemoLoginAction(
       LIMIT 1;
     `
 
+    let authUser: AuthUser
+
     if (rows.length > 0) {
       const u = rows[0]
-      return {
-        success: true,
-        user: {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          role: u.role
-        }
+      authUser = {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role
       }
-    }
-
-    // Fallback if not found in database yet
-    if (type === 'recruiter') {
-      return {
-        success: true,
-        user: {
-          id: 2,
-          name: 'Avaliador / Recrutador',
-          email: 'recrutador@tech-review.com',
-          role: 'Avaliador Convidado (Acesso Completo)'
-        }
+    } else if (type === 'recruiter') {
+      authUser = {
+        id: 2,
+        name: 'Avaliador / Recrutador',
+        email: 'recrutador@tech-review.com',
+        role: 'Avaliador Convidado (Acesso Completo)'
       }
-    }
-
-    return {
-      success: true,
-      user: {
+    } else {
+      authUser = {
         id: 1,
         name: 'Eduardo Ramos',
         email: 'eduardo@mototracker.app',
         role: 'Proprietário'
       }
     }
-  } catch (error) {
-    console.error('Erro no quickDemoLoginAction:', error)
+
+    await setSession(authUser)
+
     return {
       success: true,
-      user:
-        type === 'recruiter'
-          ? {
-              id: 2,
-              name: 'Avaliador / Recrutador',
-              email: 'recrutador@tech-review.com',
-              role: 'Avaliador Convidado (Acesso Completo)'
-            }
-          : {
-              id: 1,
-              name: 'Eduardo Ramos',
-              email: 'eduardo@mototracker.app',
-              role: 'Proprietário'
-            }
+      user: authUser
+    }
+  } catch (error) {
+    console.error('Erro no quickDemoLoginAction:', error)
+    const fallbackUser: AuthUser =
+      type === 'recruiter'
+        ? {
+            id: 2,
+            name: 'Avaliador / Recrutador',
+            email: 'recrutador@tech-review.com',
+            role: 'Avaliador Convidado (Acesso Completo)'
+          }
+        : {
+            id: 1,
+            name: 'Eduardo Ramos',
+            email: 'eduardo@mototracker.app',
+            role: 'Proprietário'
+          }
+
+    await setSession(fallbackUser)
+
+    return {
+      success: true,
+      user: fallbackUser
     }
   }
 }
@@ -245,6 +257,8 @@ export async function socialLoginAction(payload: {
       LIMIT 1;
     `
 
+    let authUser: AuthUser
+
     if (existing.length > 0) {
       const u = existing[0]
       await sql`
@@ -254,39 +268,33 @@ export async function socialLoginAction(payload: {
             updated_at = NOW()
         WHERE id = ${u.id};
       `
-      return {
-        success: true,
-        user: {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          role: u.role || (payload.provider === 'github' ? 'GitHub' : 'Google'),
-          authProvider: payload.provider,
-          avatarUrl: payload.avatarUrl || u.avatarUrl || ''
-        }
+      authUser = {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role || (payload.provider === 'github' ? 'GitHub' : 'Google'),
+        authProvider: payload.provider,
+        avatarUrl: payload.avatarUrl || u.avatarUrl || ''
       }
-    }
+    } else {
+      // New user registered via social provider
+      const randomPass = hashPassword(`social_${Date.now()}_${Math.random()}`)
+      const role = payload.provider === 'github' ? 'GitHub' : 'Google'
 
-    // New user registered via social provider
-    const randomPass = hashPassword(`social_${Date.now()}_${Math.random()}`)
-    const role = payload.provider === 'github' ? 'GitHub' : 'Google'
+      const inserted = await sql`
+        INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
+        VALUES (${payload.name.trim()}, ${normalizedEmail}, ${randomPass}, ${role}, ${payload.provider}, ${payload.avatarUrl || ''})
+        RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
+      `
+      const newUser = inserted[0]
 
-    const inserted = await sql`
-      INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
-      VALUES (${payload.name.trim()}, ${normalizedEmail}, ${randomPass}, ${role}, ${payload.provider}, ${payload.avatarUrl || ''})
-      RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
-    `
-    const newUser = inserted[0]
+      // Create starter motorcycle for this new social user
+      await sql`
+        INSERT INTO motos (user_id, name, model, plate, year, photo_url)
+        VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
+      `
 
-    // Create starter motorcycle for this new social user
-    await sql`
-      INSERT INTO motos (user_id, name, model, plate, year, photo_url)
-      VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
-    `
-
-    return {
-      success: true,
-      user: {
+      authUser = {
         id: newUser.id,
         name: newUser.name,
         email: newUser.email,
@@ -294,6 +302,13 @@ export async function socialLoginAction(payload: {
         authProvider: payload.provider,
         avatarUrl: newUser.avatarUrl || ''
       }
+    }
+
+    await setSession(authUser)
+
+    return {
+      success: true,
+      user: authUser
     }
   } catch (error) {
     console.error('Erro na ação de socialLoginAction:', error)
@@ -325,6 +340,7 @@ export async function syncClerkUserAction(payload: {
     `
 
     const authProvider = (payload.provider as any) || 'google'
+    let authUser: AuthUser
 
     if (existing.length > 0) {
       const u = existing[0]
@@ -335,34 +351,28 @@ export async function syncClerkUserAction(payload: {
             updated_at = NOW()
         WHERE id = ${u.id};
       `
-      return {
-        success: true,
-        user: {
-          id: u.id,
-          name: payload.name || u.name,
-          email: u.email,
-          role: u.role || 'Conta Verificada',
-          authProvider,
-          avatarUrl: payload.avatarUrl || u.avatarUrl || ''
-        }
+      authUser = {
+        id: u.id,
+        name: payload.name || u.name,
+        email: u.email,
+        role: u.role || 'Conta Verificada',
+        authProvider,
+        avatarUrl: payload.avatarUrl || u.avatarUrl || ''
       }
-    }
+    } else {
+      const randomPass = hashPassword(`clerk_${Date.now()}_${payload.clerkId}`)
+      const inserted = await sql`
+        INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
+        VALUES (${payload.name.trim() || 'Usuário'}, ${normalizedEmail}, ${randomPass}, 'Conta Verificada', ${authProvider}, ${payload.avatarUrl || ''})
+        RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
+      `
+      const newUser = inserted[0]
+      await sql`
+        INSERT INTO motos (user_id, name, model, plate, year, photo_url)
+        VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
+      `
 
-    const randomPass = hashPassword(`clerk_${Date.now()}_${payload.clerkId}`)
-    const inserted = await sql`
-      INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
-      VALUES (${payload.name.trim() || 'Usuário'}, ${normalizedEmail}, ${randomPass}, 'Conta Verificada', ${authProvider}, ${payload.avatarUrl || ''})
-      RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
-    `
-    const newUser = inserted[0]
-    await sql`
-      INSERT INTO motos (user_id, name, model, plate, year, photo_url)
-      VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
-    `
-
-    return {
-      success: true,
-      user: {
+      authUser = {
         id: newUser.id,
         name: newUser.name,
         email: newUser.email,
@@ -371,6 +381,13 @@ export async function syncClerkUserAction(payload: {
         avatarUrl: newUser.avatarUrl || ''
       }
     }
+
+    await setSession(authUser)
+
+    return {
+      success: true,
+      user: authUser
+    }
   } catch (error) {
     console.error('Erro no syncClerkUserAction:', error)
     return { success: false, error: 'Erro ao sincronizar com banco Neon.' }
@@ -378,16 +395,30 @@ export async function syncClerkUserAction(payload: {
 }
 
 export async function updateUserProfileAction(
-  userId: number,
-  data: { name: string }
+  userId?: number,
+  data?: { name: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+    if (!targetUserId) {
+      return { success: false, error: 'Usuário não autenticado.' }
+    }
+    if (!data?.name?.trim()) {
+      return { success: false, error: 'Nome não pode ser vazio.' }
+    }
+
     await sql`
       UPDATE users
       SET name = ${data.name.trim()},
           updated_at = NOW()
-      WHERE id = ${userId};
+      WHERE id = ${targetUserId};
     `
+
+    if (session) {
+      await setSession({ ...session, name: data.name.trim() })
+    }
+
     return { success: true }
   } catch (error) {
     console.error('Erro ao atualizar perfil do usuário:', error)
@@ -404,12 +435,15 @@ export async function getMoto(userId?: number): Promise<Moto> {
 
 export async function getMotos(userId?: number): Promise<Moto[]> {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+
     let rows: any[] = []
-    if (userId) {
+    if (targetUserId) {
       rows = await sql`
         SELECT id, name, model, plate, year, photo_url as "photoUrl"
         FROM motos
-        WHERE user_id = ${userId}
+        WHERE user_id = ${targetUserId}
         ORDER BY id ASC;
       `
     }
@@ -457,9 +491,12 @@ export async function addMotoAction(
   userId?: number
 ): Promise<{ success: boolean; moto?: Moto; error?: string }> {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId || null
+
     const inserted = await sql`
       INSERT INTO motos (user_id, name, model, plate, year, photo_url)
-      VALUES (${userId || null}, ${data.name}, ${data.model}, ${data.plate}, ${data.year}, ${data.photoUrl})
+      VALUES (${targetUserId}, ${data.name}, ${data.model}, ${data.plate}, ${data.year}, ${data.photoUrl})
       RETURNING id, name, model, plate, year, photo_url as "photoUrl";
     `
     return { success: true, moto: inserted[0] as Moto }
@@ -481,23 +518,39 @@ export async function updateMotoAction(
   motoId?: number
 ) {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+
     if (motoId) {
-      await sql`
-        UPDATE motos
-        SET name = ${data.name},
-            model = ${data.model},
-            plate = ${data.plate},
-            year = ${data.year},
-            photo_url = ${data.photoUrl},
-            updated_at = NOW()
-        WHERE id = ${motoId};
-      `
+      if (targetUserId) {
+        await sql`
+          UPDATE motos
+          SET name = ${data.name},
+              model = ${data.model},
+              plate = ${data.plate},
+              year = ${data.year},
+              photo_url = ${data.photoUrl},
+              updated_at = NOW()
+          WHERE id = ${motoId} AND (user_id = ${targetUserId} OR user_id IS NULL);
+        `
+      } else {
+        await sql`
+          UPDATE motos
+          SET name = ${data.name},
+              model = ${data.model},
+              plate = ${data.plate},
+              year = ${data.year},
+              photo_url = ${data.photoUrl},
+              updated_at = NOW()
+          WHERE id = ${motoId};
+        `
+      }
       return { success: true }
     }
 
     let existing: any[] = []
-    if (userId) {
-      existing = await sql`SELECT id FROM motos WHERE user_id = ${userId} ORDER BY id ASC LIMIT 1;`
+    if (targetUserId) {
+      existing = await sql`SELECT id FROM motos WHERE user_id = ${targetUserId} ORDER BY id ASC LIMIT 1;`
     } else {
       existing = await sql`SELECT id FROM motos ORDER BY id ASC LIMIT 1;`
     }
@@ -505,7 +558,7 @@ export async function updateMotoAction(
     if (existing.length === 0) {
       await sql`
         INSERT INTO motos (user_id, name, model, plate, year, photo_url)
-        VALUES (${userId || null}, ${data.name}, ${data.model}, ${data.plate}, ${data.year}, ${data.photoUrl});
+        VALUES (${targetUserId || null}, ${data.name}, ${data.model}, ${data.plate}, ${data.year}, ${data.photoUrl});
       `
     } else {
       await sql`
@@ -528,18 +581,27 @@ export async function updateMotoAction(
 
 export async function deleteMotoAction(motoId: number, userId?: number) {
   try {
-    // Prevent deletion if user only has 1 moto
-    if (userId) {
-      const userMotos = await sql`SELECT id FROM motos WHERE user_id = ${userId};`
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+
+    if (targetUserId) {
+      const userMotos = await sql`SELECT id FROM motos WHERE user_id = ${targetUserId};`
       if (userMotos.length <= 1) {
         return { success: false, error: 'Você precisa manter pelo menos um veículo cadastrado na sua garagem.' }
       }
+      // Check ownership
+      const belongs = userMotos.some(m => m.id === motoId)
+      if (!belongs) {
+        return { success: false, error: 'Veículo não encontrado ou você não tem permissão para excluí-lo.' }
+      }
+
+      await sql`DELETE FROM fuelings WHERE moto_id = ${motoId} AND user_id = ${targetUserId};`
+      await sql`DELETE FROM motos WHERE id = ${motoId} AND user_id = ${targetUserId};`
+    } else {
+      await sql`DELETE FROM fuelings WHERE moto_id = ${motoId};`
+      await sql`DELETE FROM motos WHERE id = ${motoId};`
     }
 
-    // Delete fuelings for this moto
-    await sql`DELETE FROM fuelings WHERE moto_id = ${motoId};`
-    // Delete the moto
-    await sql`DELETE FROM motos WHERE id = ${motoId};`
     return { success: true }
   } catch (error) {
     console.error('Error deleting moto:', error)
@@ -551,12 +613,15 @@ export async function deleteMotoAction(motoId: number, userId?: number) {
 
 export async function getFuelings(userId?: number): Promise<Fueling[]> {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+
     let rows: any[] = []
-    if (userId) {
+    if (targetUserId) {
       rows = await sql`
         SELECT id, moto_id as "motoId", date, odometer, CAST(liters AS FLOAT) as liters, CAST(cost AS FLOAT) as cost, is_full as full
         FROM fuelings
-        WHERE user_id = ${userId}
+        WHERE user_id = ${targetUserId}
         ORDER BY odometer DESC, date DESC;
       `
     } else {
@@ -585,11 +650,14 @@ export async function addFuelingAction(
   userId?: number
 ) {
   try {
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId || null
+
     let motoId = fueling.motoId
     if (!motoId) {
       let motos: any[] = []
-      if (userId) {
-        motos = await sql`SELECT id FROM motos WHERE user_id = ${userId} ORDER BY id ASC LIMIT 1;`
+      if (targetUserId) {
+        motos = await sql`SELECT id FROM motos WHERE user_id = ${targetUserId} ORDER BY id ASC LIMIT 1;`
       } else {
         motos = await sql`SELECT id FROM motos ORDER BY id ASC LIMIT 1;`
       }
@@ -598,7 +666,7 @@ export async function addFuelingAction(
 
     const inserted = await sql`
       INSERT INTO fuelings (moto_id, user_id, date, odometer, liters, cost, is_full)
-      VALUES (${motoId}, ${userId || null}, ${fueling.date}, ${fueling.odometer}, ${fueling.liters}, ${fueling.cost}, ${fueling.full})
+      VALUES (${motoId}, ${targetUserId}, ${fueling.date}, ${fueling.odometer}, ${fueling.liters}, ${fueling.cost}, ${fueling.full})
       RETURNING id, moto_id as "motoId", date, odometer, CAST(liters AS FLOAT) as liters, CAST(cost AS FLOAT) as cost, is_full as full;
     `
     return { success: true, fueling: inserted[0] as Fueling }
@@ -608,11 +676,21 @@ export async function addFuelingAction(
   }
 }
 
-export async function deleteFuelingAction(id: number) {
+export async function deleteFuelingAction(id: number, userId?: number) {
   try {
-    await sql`
-      DELETE FROM fuelings WHERE id = ${id};
-    `
+    const session = await getSessionUser()
+    const targetUserId = session?.id || userId
+
+    if (targetUserId) {
+      await sql`
+        DELETE FROM fuelings 
+        WHERE id = ${id} AND (user_id = ${targetUserId} OR user_id IS NULL);
+      `
+    } else {
+      await sql`
+        DELETE FROM fuelings WHERE id = ${id};
+      `
+    }
     return { success: true }
   } catch (error) {
     console.error('Error deleting fueling:', error)

@@ -9,14 +9,12 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  Briefcase,
   Navigation,
   PackageCheck,
   Code2,
-  Fuel,
+  Palette,
   Gauge,
   ShieldCheck,
-  Zap,
   TrendingUp
 } from 'lucide-react'
 import {
@@ -30,18 +28,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { type AccentColor, ACCENT_CONFIG } from '@/components/accent-picker'
 
 export type UsageProfile = 'daily' | 'delivery' | 'trips' | 'tech_recruiter'
 
 export interface OnboardingData {
   usageProfile: UsageProfile
   motoName: string
+  motoBrand: string
   motoModel: string
   motoPlate: string
   motoYear: string
   currentOdometer?: number
-  preferredFuel: 'gasoline' | 'premium' | 'ethanol'
-  consumptionTarget: number
+  preferredColor: AccentColor
 }
 
 interface WelcomeDialogProps {
@@ -53,15 +52,25 @@ interface WelcomeDialogProps {
   onComplete: (data: OnboardingData) => Promise<void> | void
 }
 
-const POPULAR_MOTOS = [
-  'Honda CB 300F Twister',
-  'Yamaha Fazer FZ25',
-  'Honda CG 160 Titan',
-  'Yamaha MT-03',
-  'Honda Bros 160',
-  'Honda XRE 300 / Sahara',
-  'Royal Enfield Hunter 350'
+const POPULAR_BRANDS = [
+  'Honda',
+  'Yamaha',
+  'BMW',
+  'Kawasaki',
+  'Suzuki',
+  'Royal Enfield',
+  'Triumph',
+  'Haojue'
 ]
+
+const BRAND_MODELS: Record<string, string[]> = {
+  Honda: ['Bros 160', 'CG 160 Titan', 'CB 300F Twister', 'XRE 300 / Sahara', 'Biz 125', 'Pop 110i'],
+  Yamaha: ['Fazer FZ25', 'Fator 150', 'Crosser 150', 'MT-03', 'Lander 250', 'NMAX 160'],
+  BMW: ['G 310 GS', 'F 850 GS', 'R 1250 GS', 'S 1000 RR'],
+  Kawasaki: ['Ninja 400', 'Z400', 'Versys 300', 'Z900'],
+  Suzuki: ['V-Strom 650', 'GSX-S750', 'Hayabusa', 'Burgman'],
+  'Royal Enfield': ['Hunter 350', 'Classic 350', 'Meteor 350', 'Himalayan 411/450']
+}
 
 export function WelcomeDialog({
   open,
@@ -74,15 +83,27 @@ export function WelcomeDialog({
   const [step, setStep] = useState<number>(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Parse initial brand/model if provided
+  const parsedInitial = (() => {
+    if (!initialMotoModel) return { brand: 'Honda', model: 'CB 300F Twister' }
+    const parts = initialMotoModel.trim().split(' ')
+    const firstWord = parts[0]
+    const matchedBrand = POPULAR_BRANDS.find(b => b.toLowerCase() === firstWord.toLowerCase())
+    if (matchedBrand) {
+      return { brand: matchedBrand, model: parts.slice(1).join(' ') || 'Bros 160' }
+    }
+    return { brand: 'Honda', model: initialMotoModel }
+  })()
+
   // Form State
   const [usageProfile, setUsageProfile] = useState<UsageProfile>('daily')
   const [motoName, setMotoName] = useState('Minha Moto')
-  const [motoModel, setMotoModel] = useState(initialMotoModel || 'Honda CB 300F Twister')
+  const [motoBrand, setMotoBrand] = useState(parsedInitial.brand)
+  const [motoModel, setMotoModel] = useState(parsedInitial.model)
   const [motoYear, setMotoYear] = useState('2024')
   const [motoPlate, setMotoPlate] = useState('BRA-2E19')
   const [currentOdometer, setCurrentOdometer] = useState<string>('12500')
-  const [preferredFuel, setPreferredFuel] = useState<'gasoline' | 'premium' | 'ethanol'>('gasoline')
-  const [consumptionTarget, setConsumptionTarget] = useState<number>(35)
+  const [preferredColor, setPreferredColor] = useState<AccentColor>('red')
 
   const firstName = userName?.trim().split(' ')[0] || ''
 
@@ -100,12 +121,12 @@ export function WelcomeDialog({
       await onComplete({
         usageProfile,
         motoName: motoName.trim() || 'Minha Moto',
-        motoModel: motoModel.trim() || 'Honda CB 300F Twister',
+        motoBrand: motoBrand.trim() || 'Honda',
+        motoModel: motoModel.trim() || 'Bros 160',
         motoPlate: motoPlate.trim().toUpperCase(),
         motoYear: motoYear.trim() || '2024',
         currentOdometer: currentOdometer ? Number(currentOdometer) : undefined,
-        preferredFuel,
-        consumptionTarget
+        preferredColor
       })
       onOpenChange(false)
     } finally {
@@ -119,11 +140,11 @@ export function WelcomeDialog({
       await onComplete({
         usageProfile: 'daily',
         motoName: 'Minha Moto',
-        motoModel: initialMotoModel || 'Honda CB 300F Twister',
+        motoBrand: 'Honda',
+        motoModel: 'Bros 160',
         motoPlate: 'BRA-2E19',
         motoYear: '2024',
-        preferredFuel: 'gasoline',
-        consumptionTarget: 35
+        preferredColor: 'red'
       })
       onOpenChange(false)
     } finally {
@@ -134,10 +155,12 @@ export function WelcomeDialog({
   const stepsList = [
     { title: 'Boas-vindas', desc: 'Introdução' },
     { title: 'Perfil de Uso', desc: 'Objetivo' },
-    { title: 'Sua Moto', desc: 'Dados técnicos' },
-    { title: 'Metas', desc: 'Consumo' },
+    { title: 'Sua Moto', desc: 'Marca & Modelo' },
+    { title: 'Cores', desc: 'Identidade Visual' },
     { title: 'Pronto!', desc: 'Conclusão' }
   ]
+
+  const suggestedModels = BRAND_MODELS[motoBrand] || BRAND_MODELS['Honda']
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,7 +233,7 @@ export function WelcomeDialog({
                       Bem-vindo, {firstName}! 👋
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Sua conta já está autenticada e conectada ao banco Neon Postgres.
+                      Sua conta está conectada e pronta para registrar sua garagem.
                     </p>
                   </div>
                 </div>
@@ -223,9 +246,9 @@ export function WelcomeDialog({
                     <div className="flex items-start gap-2.5 p-2.5 rounded-lg border border-border/70 bg-muted/20">
                       <Gauge className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-semibold text-foreground">Cálculo Preciso de KM/L</p>
+                        <p className="font-semibold text-foreground">Cálculo Ponderado de Consumo (km/L)</p>
                         <p className="text-muted-foreground text-[11px]">
-                          Médias reais tanque-cheio a cada abastecimento com odômetro calibrado.
+                          Médias matemáticas precisas com tratamento de tanques cheios e parciais.
                         </p>
                       </div>
                     </div>
@@ -233,7 +256,7 @@ export function WelcomeDialog({
                     <div className="flex items-start gap-2.5 p-2.5 rounded-lg border border-border/70 bg-muted/20">
                       <TrendingUp className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-semibold text-foreground">Custo por Quilômetro (R$/KM)</p>
+                        <p className="font-semibold text-foreground">Custo Real por Quilômetro (R$/KM)</p>
                         <p className="text-muted-foreground text-[11px]">
                           Saiba exatamente quanto custa rodar cada quilômetro com a sua moto.
                         </p>
@@ -243,9 +266,9 @@ export function WelcomeDialog({
                     <div className="flex items-start gap-2.5 p-2.5 rounded-lg border border-border/70 bg-muted/20">
                       <ShieldCheck className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-semibold text-foreground">Sincronização Segura na Nuvem</p>
+                        <p className="font-semibold text-foreground">Isolamento Completo da Garagem</p>
                         <p className="text-muted-foreground text-[11px]">
-                          Seus registros salvos em tempo real com segurança e sem perda de dados.
+                          Cadastre múltiplas motos com dados e telemetrias 100% independentes.
                         </p>
                       </div>
                     </div>
@@ -269,7 +292,7 @@ export function WelcomeDialog({
                     Qual é o seu objetivo principal com o app?
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Isso personaliza os alertas e indicadores de consumo do seu painel.
+                    Isso personaliza o perfil da sua garagem e os destaques do painel.
                   </p>
                 </div>
 
@@ -290,7 +313,7 @@ export function WelcomeDialog({
                     </div>
                     <span className="text-xs font-semibold text-foreground">Dia a Dia & Mobilidade</span>
                     <span className="text-[11px] text-muted-foreground mt-0.5">
-                      Deslocamento diário para trabalho, faculdade e trânsito da cidade.
+                      Deslocamento diário para trabalho, faculdade e trânsito urbano.
                     </span>
                   </button>
 
@@ -310,7 +333,7 @@ export function WelcomeDialog({
                     </div>
                     <span className="text-xs font-semibold text-foreground">Trabalho & Entregas</span>
                     <span className="text-[11px] text-muted-foreground mt-0.5">
-                      iFood, Rappi, Loggi ou motoboy. Foco total em custo/km e margem de lucro.
+                      iFood, Loggi ou motoboy. Foco total em custo/km e rendimento diário.
                     </span>
                   </button>
 
@@ -330,7 +353,7 @@ export function WelcomeDialog({
                     </div>
                     <span className="text-xs font-semibold text-foreground">Viagens & Fim de Semana</span>
                     <span className="text-[11px] text-muted-foreground mt-0.5">
-                      Passeios na estrada, viagens e autonomia do tanque em rodovias.
+                      Passeios de fim de semana, viagens em rodovias e encontros de moto.
                     </span>
                   </button>
 
@@ -350,14 +373,14 @@ export function WelcomeDialog({
                     </div>
                     <span className="text-xs font-semibold text-foreground">Recrutador / Avaliador Tech</span>
                     <span className="text-[11px] text-muted-foreground mt-0.5">
-                      Conhecendo o projeto (Next.js 16, Neon Postgres, Clerk, Turbopack).
+                      Avaliando a arquitetura (Next.js 16, Neon Postgres, Turbopack, Vitest).
                     </span>
                   </button>
                 </div>
               </motion.div>
             )}
 
-            {/* STEP 2: DADOS DA MOTO */}
+            {/* STEP 2: DADOS DA MOTO (MARCA E MODELO SEPARADOS) */}
             {step === 2 && (
               <motion.div
                 key="step2"
@@ -372,45 +395,92 @@ export function WelcomeDialog({
                     Qual moto você quer monitorar?
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Preencha os dados da sua moto atual para personalizar as métricas.
+                    Informe a marca e o modelo separadamente para calibrar sua garagem.
                   </p>
                 </div>
 
-                {/* Quick Model Selector */}
+                {/* Quick Brand Pills */}
                 <div className="space-y-1.5">
-                  <span className="text-[11px] text-muted-foreground">Modelos populares rápidos:</span>
+                  <span className="text-[11px] text-muted-foreground">Selecione a Marca:</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {POPULAR_MOTOS.slice(0, 4).map(m => (
+                    {POPULAR_BRANDS.map(b => (
                       <button
-                        key={m}
+                        key={b}
                         type="button"
-                        onClick={() => setMotoModel(m)}
-                        className={`text-[11px] px-2 py-1 rounded-md border transition-colors cursor-pointer ${
-                          motoModel === m
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-muted/30 text-muted-foreground hover:text-foreground border-border'
+                        onClick={() => {
+                          setMotoBrand(b)
+                          const models = BRAND_MODELS[b]
+                          if (models && models.length > 0) {
+                            setMotoModel(models[0])
+                          }
+                        }}
+                        className={`text-[11px] px-2 py-1 rounded-md border transition-all cursor-pointer font-medium ${
+                          motoBrand.toLowerCase() === b.toLowerCase()
+                            ? 'bg-primary text-primary-foreground border-primary shadow-2xs font-semibold'
+                            : 'bg-muted/30 text-muted-foreground hover:text-foreground border-border hover:bg-muted/60'
                         }`}
                       >
-                        {m.split(' ')[1]} {m.split(' ')[2] || ''}
+                        {b}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="grid gap-3 pt-1">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="onboarding-model" className="text-xs font-semibold">
-                      Modelo da Moto *
-                    </Label>
-                    <Input
-                      id="onboarding-model"
-                      value={motoModel}
-                      onChange={e => setMotoModel(e.target.value)}
-                      placeholder="Ex: Honda CB 300F Twister"
-                      required
-                      className="text-xs"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Marca Input */}
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="onboarding-brand" className="text-xs font-semibold">
+                        Marca *
+                      </Label>
+                      <Input
+                        id="onboarding-brand"
+                        value={motoBrand}
+                        onChange={e => setMotoBrand(e.target.value)}
+                        placeholder="Ex: Honda, Yamaha"
+                        required
+                        className="text-xs"
+                      />
+                    </div>
+
+                    {/* Modelo Input */}
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="onboarding-model" className="text-xs font-semibold">
+                        Modelo *
+                      </Label>
+                      <Input
+                        id="onboarding-model"
+                        value={motoModel}
+                        onChange={e => setMotoModel(e.target.value)}
+                        placeholder="Ex: Bros 160, Titan 160"
+                        required
+                        className="text-xs"
+                      />
+                    </div>
                   </div>
+
+                  {/* Quick Model Suggestions */}
+                  {suggestedModels && suggestedModels.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground">Modelos sugeridos da {motoBrand}:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {suggestedModels.map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setMotoModel(m)}
+                            className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
+                              motoModel === m
+                                ? 'bg-primary/20 text-primary border-primary/40 font-semibold'
+                                : 'bg-muted/20 text-muted-foreground hover:text-foreground border-border'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
@@ -444,7 +514,7 @@ export function WelcomeDialog({
                       <Label htmlFor="onboarding-odo" className="text-xs font-semibold">
                         Quilometragem Atual (Odômetro)
                       </Label>
-                      <span className="text-[10px] text-muted-foreground">Ponto de partida</span>
+                      <span className="text-[10px] text-muted-foreground">Ponto de partida do painel</span>
                     </div>
                     <Input
                       id="onboarding-odo"
@@ -459,7 +529,7 @@ export function WelcomeDialog({
               </motion.div>
             )}
 
-            {/* STEP 3: PREFERÊNCIAS & META */}
+            {/* STEP 3: PREFERÊNCIA DE CORES (IDENTIDADE VISUAL MOTORSPORT) */}
             {step === 3 && (
               <motion.div
                 key="step3"
@@ -467,73 +537,60 @@ export function WelcomeDialog({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className="space-y-4"
+                className="space-y-3.5"
               >
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">
-                    Combustível e Meta de Consumo
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Defina o combustível habitual e a média que você deseja alcançar.
-                  </p>
-                </div>
-
-                {/* Combustível Habitual */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Combustível Habitual</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'gasoline', label: 'Gasolina Comum', desc: 'Mais usual' },
-                      { id: 'premium', label: 'Aditivada', desc: 'Limpeza do motor' },
-                      { id: 'ethanol', label: 'Etanol / Álcool', desc: 'Mais ecológico' }
-                    ].map(f => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setPreferredFuel(f.id as any)}
-                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                          preferredFuel === f.id
-                            ? 'border-primary bg-primary/10 font-semibold text-primary'
-                            : 'border-border hover:border-primary/40 text-muted-foreground'
-                        }`}
-                      >
-                        <Fuel className="h-4 w-4 mx-auto mb-1 opacity-80" />
-                        <span className="text-xs block">{f.label}</span>
-                        <span className="text-[10px] opacity-70 block">{f.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Meta de Consumo */}
-                <div className="space-y-2.5 pt-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">Meta de Consumo Médio</Label>
-                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                      {consumptionTarget} km/l
-                    </span>
-                  </div>
-
                   <div className="flex items-center gap-2">
-                    {[28, 32, 35, 40, 45].map(target => (
-                      <button
-                        key={target}
-                        type="button"
-                        onClick={() => setConsumptionTarget(target)}
-                        className={`flex-1 py-1.5 text-xs rounded-lg border font-mono transition-colors cursor-pointer ${
-                          consumptionTarget === target
-                            ? 'bg-primary text-primary-foreground border-primary font-bold'
-                            : 'bg-muted/20 text-muted-foreground hover:text-foreground border-border'
-                        }`}
-                      >
-                        {target}
-                      </button>
-                    ))}
+                    <Palette className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-bold text-foreground">
+                      Qual é a cor ou estilo da sua moto?
+                    </h3>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    O painel comparará seus abastecimentos reais contra a meta de <strong>{consumptionTarget} km/l</strong>.
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Selecione a identidade visual que mais combina com seu estilo e montadora.
                   </p>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {(Object.keys(ACCENT_CONFIG) as AccentColor[]).map(color => {
+                    const cfg = ACCENT_CONFIG[color]
+                    const isSelected = preferredColor === color
+
+                    return (
+                      <div
+                        key={color}
+                        onClick={() => setPreferredColor(color)}
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40'
+                            : 'border-border/80 bg-card hover:bg-muted/40 hover:border-border'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`h-6 w-6 rounded-full shadow-xs flex-shrink-0 ${cfg.bgClass}`}
+                          />
+                          <div>
+                            <p className="text-xs font-semibold text-foreground leading-tight">
+                              {cfg.name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground font-mono">
+                              {cfg.brand}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <p className="text-[11px] text-muted-foreground text-center pt-1">
+                  Você poderá alterar essa cor a qualquer momento na aba <strong>Configurações</strong>.
+                </p>
               </motion.div>
             )}
 
@@ -558,17 +615,36 @@ export function WelcomeDialog({
                     Tudo pronto para rodar, {firstName}! 🏍️
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-                    Suas configurações foram preparadas e sincronizadas. Agora você tem controle absoluto da sua moto.
+                    Sua moto foi cadastrada com sucesso e o painel já está personalizado com as suas preferências.
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs space-y-1.5 text-left max-w-md mx-auto font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Moto:</span>
-                    <span className="font-semibold text-foreground">{motoModel} ({motoYear})</span>
+                <div className="rounded-xl border border-border bg-muted/30 p-3.5 text-xs space-y-2 text-left max-w-md mx-auto font-mono">
+                  <div className="flex justify-between items-center border-b border-border/60 pb-1.5">
+                    <span className="text-muted-foreground">Veículo Cadastrado:</span>
+                    <span className="font-semibold text-foreground">
+                      {motoBrand} • {motoModel} ({motoYear})
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Perfil:</span>
+
+                  {motoPlate && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Placa:</span>
+                      <span className="font-semibold text-foreground">{motoPlate}</span>
+                    </div>
+                  )}
+
+                  {currentOdometer && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Odômetro Inicial:</span>
+                      <span className="font-semibold text-foreground">
+                        {Number(currentOdometer).toLocaleString('pt-BR')} km
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Perfil de Uso:</span>
                     <span className="font-semibold text-foreground">
                       {usageProfile === 'delivery'
                         ? 'Trabalho / Entregas'
@@ -579,16 +655,18 @@ export function WelcomeDialog({
                         : 'Dia a Dia'}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Meta de Consumo:</span>
-                    <span className="font-semibold text-primary">{consumptionTarget} km/l</span>
-                  </div>
-                  {currentOdometer && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Odômetro Inicial:</span>
-                      <span className="font-semibold text-foreground">{Number(currentOdometer).toLocaleString('pt-BR')} km</span>
+
+                  <div className="flex justify-between items-center pt-0.5">
+                    <span className="text-muted-foreground">Identidade Visual:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`h-3 w-3 rounded-full ${ACCENT_CONFIG[preferredColor].bgClass}`}
+                      />
+                      <span className="font-semibold text-primary">
+                        {ACCENT_CONFIG[preferredColor].name}
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </div>
               </motion.div>
             )}

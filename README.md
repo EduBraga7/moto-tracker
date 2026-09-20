@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://moto-tracker-kohl.vercel.app/"><img src="https://img.shields.io/badge/Deploy-moto--tracker--kohl.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" /></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.3_(Turbopack)-black?style=for-the-badge&logo=next.js" alt="Next.js" /></a>
+  <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Tests-Vitest_100%25-FCC72B?style=for-the-badge&logo=vitest&logoColor=black" alt="Vitest" /></a>
   <a href="https://clerk.com/"><img src="https://img.shields.io/badge/Auth-Clerk_SSO-6C47FF?style=for-the-badge&logo=clerk&logoColor=white" alt="Clerk Auth" /></a>
   <a href="https://neon.tech/"><img src="https://img.shields.io/badge/Postgres-Neon_Serverless-00E599?style=for-the-badge&logo=postgresql&logoColor=black" alt="Neon Postgres" /></a>
   <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-v4.0-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=black" alt="Tailwind CSS" /></a>
@@ -31,7 +32,7 @@
 
 O **Moto Tracker PRO** é uma solução completa desenvolvida com arquitetura moderna e design system inspirado em aplicações de referência internacional (*Linear*, *Raycast*, *Vercel* e *Stripe*).
 
-Criado tanto para o controle prático de despesas e rendimento de frotas pessoais de motociclistas quanto como projeto de destaque técnico, ele resolve um problema frequente em aplicativos do gênero: **distorções matemáticas no cálculo de médias de consumo**, ausência de **suporte a múltiplos veículos** e **falta de ergonomia mobile**.
+Criado tanto para o controle prático de despesas e rendimento de frotas pessoais de motociclistas quanto como projeto de destaque técnico, ele resolve um problema frequente em aplicativos do gênero: **distorções matemáticas no cálculo de médias de consumo**, ausência de **suporte a múltiplos veículos**, **falta de testes automatizados** e **falta de ergonomia mobile**.
 
 ---
 
@@ -41,7 +42,7 @@ Criado tanto para o controle prático de despesas e rendimento de frotas pessoai
 - **Cadastro Ilimitado de Motos:** Adicione quantas motocicletas desejar (marca, modelo, placa, ano e foto).
 - **Isolamento Completo por Veículo:** Histórico de abastecimentos, cálculos de autonomia, odômetros e gráficos são mantidos estritamente separados por moto.
 - **Alternador Rápido:** Alterne a moto ativa com apenas 1 clique no menu lateral (desktop) ou no botão de topo rápido (mobile).
-- **Proteção de Exclusão:** Garante integridade referencial mantendo sempre ao menos 1 moto ativa vinculada à conta.
+- **Proteção de Exclusão & Integridade:** Garante integridade referencial mantendo sempre ao menos 1 moto ativa vinculada à conta.
 
 ### 📱 2. Experiência Mobile Nativa (PWA-Ready)
 - **Barra de Navegação Inferior (Bottom Bar):** Acesso fácil com o polegar aos 5 módulos principais (*Painel*, *Métricas*, *Histórico*, *Garagem* e *Ajustes*).
@@ -56,12 +57,12 @@ Criado tanto para o controle prático de despesas e rendimento de frotas pessoai
 ### 🧭 4. Onboarding & Questionário de Boas-Vindas
 - **Wizard Interativo em 5 Etapas:** Apresentado no primeiro acesso de novos usuários:
   1. Boas-vindas e proposta de valor.
-  2. Perfil de utilização (*Trabalho/Entregas*, *Dia a dia/Mobilidade*, *Passeios/Viagens*).
-  3. Dados da motocicleta (com sugestões de modelos populares brasileiros).
-  4. Odômetro inicial e combustível de preferência.
+  2. Perfil de utilização (*Trabalho/Entregas*, *Dia a dia/Mobilidade*, *Passeios/Viagens*, *Recrutador Tech*).
+  3. Dados da motocicleta com **Marca** (*Honda, Yamaha, BMW, etc.*) e **Modelo** (*Bros 160, Titan, Twister, etc.*) devidamente separados, além de placa, ano e odômetro inicial.
+  4. Escolha de **Identidade Visual & Cor Motorsport** favorita da moto.
   5. Resumo e inicialização automática do painel.
 
-### 🧮 5. Motor de Cálculo Automotivo Ponderado
+### 🧮 5. Motor de Cálculo Automotivo Ponderado & Testes Unitários
 Muitas aplicações de odômetro cometem o erro grave de calcular médias aritméticas simples sobre médias individuais $(\frac{e_1 + e_2}{2})$. O **Moto Tracker PRO** adota fórmulas automotivas de engenharia:
 - **Média Real de Consumo (km/L):**
   $$\text{Consumo Real} = \frac{\sum_{i=1}^{n} \text{Distância}_i}{\sum_{i=1}^{n} \text{Litros}_i}$$
@@ -69,11 +70,12 @@ Muitas aplicações de odômetro cometem o erro grave de calcular médias aritm�
   $$\text{Custo/Km} = \frac{\sum \text{Custo (R\$)}}{\sum \text{Distância (km)}}$$
 - **Tratamento de Tanque Parcial:** Acúmulo de litros e quilometragem de múltiplos abastecimentos parciais até o próximo tanque cheio para apuração de rendimento preciso.
 - **Validação Sequencial de Odômetro:** Impede registros com quilometragem regressiva ou inconsistente.
+- **Suíte de Testes Automatizados (Vitest):** Cobertura de testes unitários em `tests/calculations.test.ts` validando médias ponderadas, tanques parciais intercalados e tratamento de exceções.
 
-### 🔐 6. Autenticação Moderna & Isolamento de Usuários
-- **Clerk Authentication:** Login social via Google e e-mail com sessões gerenciadas e seguras.
-- **Sincronização Neon Postgres:** Cada usuário possui seus próprios registros de motos e abastecimentos isolados no banco de dados relacional.
-- **Modo Demonstração (1 Clique):** Recrutadores e avaliadores podem entrar instantaneamente sem cadastro prévio para testar a aplicação completa.
+### 🔐 6. Autenticação Segura no Servidor & Proteção Anti-IDOR
+- **Sessões Criptografadas em Cookies HTTP-Only:** Implementadas com assinatura criptográfica HMAC-SHA256 (`lib/session.ts`).
+- **Eliminação de IDOR:** As Server Actions obtêm a identidade do usuário a partir da sessão no servidor, impedindo que usuários adulterem o `userId` no cliente ou excluam abastecimentos e motos alheias.
+- **Clerk Authentication & Modo Demonstração:** Suporte a login social e botão de demonstração em 1 clique para recrutadores e avaliadores.
 
 ### 📊 7. Telemetria & Gráficos Analíticos (Recharts)
 - **Evolução de Consumo ao Longo do Tempo:** Área com gradiente e identificação de picos de eficiência.
@@ -97,10 +99,11 @@ Muitas aplicações de odômetro cometem o erro grave de calcular médias aritm�
 | Camada | Tecnologia | Propósito |
 | :--- | :--- | :--- |
 | **Framework** | Next.js 16.3 (Turbopack) | App Router, Server Actions, Dynamic OG Image e rotas estáticas |
-| **Autenticação** | Clerk Auth | SSO com Google, modal responsivo e gestão de sessões |
+| **Autenticação** | Clerk Auth + Session Cookies | SSO com Google, sessões assinadas HMAC-SHA256 httpOnly |
 | **Banco de Dados**| Neon Serverless Postgres | Banco relacional em nuvem (`sa-east-1` São Paulo) com connection pooling |
+| **Testes** | Vitest | Testes unitários automatizados para o motor de cálculos automotivos |
 | **Linguagem** | TypeScript 5.7 | Tipagem estrita de telemetria, motos e formulários |
-| **UI Library** | React 19 | Hooks modernos, useMemo e componentes interativos |
+| **UI Library** | React 19 | Componentização desacoplada, hooks modernos e useMemo |
 | **Estilização** | Tailwind CSS v4 | Estilização utility-first com OKLCH CSS Variables dinâmicas |
 | **Gráficos** | Recharts 3.8 | Gráficos de telemetria responsivos e otimizados |
 | **Animações** | Framer Motion 13 | Transições de abas, modais e microinterações fluidas |
@@ -133,7 +136,12 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 ```
 
-### 4. Iniciar o servidor de desenvolvimento:
+### 4. Executar os Testes Unitários:
+```bash
+pnpm test
+```
+
+### 5. Iniciar o servidor de desenvolvimento:
 ```bash
 pnpm dev
 ```
