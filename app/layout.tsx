@@ -6,9 +6,12 @@ import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://moto-tracker-kohl.vercel.app'),
   title: 'Moto Tracker — Gestão de Combustível e Odômetro',
-  description: 'Acompanhe a sua moto, abastecimentos, fotos, consumo e despesas.',
-  generator: 'v0.app',
+  description: 'Acompanhe consumo real (km/L), gastos por quilômetro, histórico de abastecimentos e múltiplas motos na sua garagem.',
+  applicationName: 'Moto Tracker',
+  authors: [{ name: 'Eduardo Ramos' }],
+  keywords: ['moto', 'combustível', 'odômetro', 'consumo', 'km/L', 'garagem', 'motocicleta', 'tracker'],
   icons: {
     icon: [
       {
@@ -17,6 +20,28 @@ export const metadata: Metadata = {
       },
     ],
     apple: '/icon.svg',
+  },
+  openGraph: {
+    title: 'Moto Tracker — Gestão Inteligente de Combustível & Odômetro',
+    description: 'Acompanhe consumo real (km/L), gastos por quilômetro, histórico de abastecimentos e múltiplas motos na sua garagem.',
+    url: 'https://moto-tracker-kohl.vercel.app',
+    siteName: 'Moto Tracker',
+    locale: 'pt_BR',
+    type: 'website',
+    images: [
+      {
+        url: '/og-image.jpg',
+        width: 1200,
+        height: 675,
+        alt: 'Moto Tracker — Gestão Inteligente de Combustível & Odômetro',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Moto Tracker — Gestão Inteligente de Combustível & Odômetro',
+    description: 'Acompanhe consumo real (km/L), gastos por km e sua garagem completa.',
+    images: ['/og-image.jpg'],
   },
 }
 
