@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bike,
@@ -56,17 +56,39 @@ export function LoginView({ onLogin }: LoginViewProps) {
   const [loading, setLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState<string>('')
 
-  // Social OAuth modal states
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false)
-  const [googleCustomEmail, setGoogleCustomEmail] = useState('')
-  const [isGithubModalOpen, setIsGithubModalOpen] = useState(false)
-  const [githubCustomUser, setGithubCustomUser] = useState('')
-
   // Forgot password modal state
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotSubmitted, setForgotSubmitted] = useState(false)
   const [forgotLoading, setForgotLoading] = useState(false)
+
+  // Open OAuth popup window
+  const openOAuthPopup = (provider: 'google' | 'github') => {
+    const width = provider === 'google' ? 460 : 520
+    const height = 620
+    const left = typeof window !== 'undefined' ? Math.max(0, window.screen.width / 2 - width / 2) : 100
+    const top = typeof window !== 'undefined' ? Math.max(0, window.screen.height / 2 - height / 2) : 100
+    window.open(
+      provider === 'google' ? '/auth/google' : '/auth/github',
+      `${provider}_oauth`,
+      `width=${width},height=${height},top=${top},left=${left},status=no,toolbar=no,menubar=no,location=no`
+    )
+  }
+
+  // Handle OAuth message received from popup window
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (typeof window !== 'undefined' && event.origin !== window.location.origin) return
+
+      if (event.data?.type === 'OAUTH_SUCCESS' && event.data?.user) {
+        const { provider, user } = event.data
+        handleSocialAuth(provider, user.name, user.email, user.avatarUrl)
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
 
   // Form states
   const [name, setName] = useState('')
@@ -179,10 +201,9 @@ export function LoginView({ onLogin }: LoginViewProps) {
   const handleSocialAuth = async (
     provider: 'google' | 'github',
     socialName: string,
-    socialEmail: string
+    socialEmail: string,
+    socialAvatar?: string
   ) => {
-    setIsGoogleModalOpen(false)
-    setIsGithubModalOpen(false)
     setLoading(true)
     setError(null)
     setLoadingStep(
@@ -195,7 +216,8 @@ export function LoginView({ onLogin }: LoginViewProps) {
       const res = await socialLoginAction({
         provider,
         name: socialName,
-        email: socialEmail
+        email: socialEmail,
+        avatarUrl: socialAvatar
       })
 
       if (!res.success || !res.user) {
@@ -691,7 +713,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 type="button"
                 variant="outline"
                 disabled={loading}
-                onClick={() => setIsGoogleModalOpen(true)}
+                onClick={() => openOAuthPopup('google')}
                 className="h-8.5 text-xs gap-2 border-border/80 hover:bg-muted cursor-pointer"
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
@@ -719,7 +741,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 type="button"
                 variant="outline"
                 disabled={loading}
-                onClick={() => setIsGithubModalOpen(true)}
+                onClick={() => openOAuthPopup('github')}
                 className="h-8.5 text-xs gap-2 border-border/80 hover:bg-muted cursor-pointer"
               >
                 <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
@@ -845,192 +867,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* ================= GOOGLE OAUTH MODAL ================= */}
-      <Dialog open={isGoogleModalOpen} onOpenChange={setIsGoogleModalOpen}>
-        <DialogContent className="sm:max-w-[420px] bg-card border-border text-foreground">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <svg className="h-6 w-6 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-              </svg>
-              <div>
-                <DialogTitle className="text-base font-bold">Fazer login com o Google</DialogTitle>
-                <DialogDescription className="text-xs">
-                  Continuar para o <span className="font-semibold text-foreground">Moto Tracker PRO</span>
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="py-2 space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Escolha uma conta para continuar:
-            </p>
-
-            {/* Account 1: Eduardo */}
-            <div
-              onClick={() => handleSocialAuth('google', 'Eduardo Braga', 'eduardobraga@gmail.com')}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-border/80 hover:bg-muted/70 cursor-pointer transition-all hover:border-primary/50 group"
-            >
-              <div className="h-9 w-9 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
-                EB
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">Eduardo Braga</p>
-                <p className="text-[11px] text-muted-foreground font-mono truncate">eduardobraga@gmail.com</p>
-              </div>
-              <span className="text-[10px] text-muted-foreground border border-border px-1.5 py-0.5 rounded-md font-mono shrink-0">Conectar</span>
-            </div>
-
-            {/* Account 2: Tech Recruiter */}
-            <div
-              onClick={() => handleSocialAuth('google', 'Avaliador Tech (Google)', 'recrutador.tech@gmail.com')}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-border/80 hover:bg-muted/70 cursor-pointer transition-all hover:border-primary/50 group"
-            >
-              <div className="h-9 w-9 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
-                RT
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">Avaliador Tech / Recrutador</p>
-                <p className="text-[11px] text-muted-foreground font-mono truncate">recrutador.tech@gmail.com</p>
-              </div>
-              <span className="text-[10px] text-muted-foreground border border-border px-1.5 py-0.5 rounded-md font-mono shrink-0">Conectar</span>
-            </div>
-
-            {/* Custom Google Email Input */}
-            <div className="pt-2 border-t border-border/60">
-              <label className="text-[11px] text-muted-foreground font-medium block mb-1.5">
-                Ou use seu próprio e-mail Google:
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  type="email"
-                  value={googleCustomEmail}
-                  onChange={e => setGoogleCustomEmail(e.target.value)}
-                  placeholder="seu.nome@gmail.com"
-                  className="h-8.5 text-xs"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!googleCustomEmail.includes('@')}
-                  onClick={() => {
-                    const name = googleCustomEmail.split('@')[0]
-                    handleSocialAuth('google', name.charAt(0).toUpperCase() + name.slice(1), googleCustomEmail)
-                  }}
-                  className="h-8.5 text-xs shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  Entrar
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-border pt-2 text-[10px] text-muted-foreground leading-tight">
-            Para continuar, o Google compartilhará seu nome, e-mail e preferência de idioma com o Moto Tracker PRO.
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ================= GITHUB OAUTH MODAL ================= */}
-      <Dialog open={isGithubModalOpen} onOpenChange={setIsGithubModalOpen}>
-        <DialogContent className="sm:max-w-[420px] bg-card border-border text-foreground">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-zinc-900 text-white shadow-xs border border-zinc-800 shrink-0">
-                <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-                </svg>
-              </div>
-              <div>
-                <DialogTitle className="text-base font-bold">Autorizar Moto Tracker PRO</DialogTitle>
-                <DialogDescription className="text-xs">
-                  por <span className="font-semibold text-foreground">EduBraga7</span> • GitHub OAuth
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="py-2 space-y-2">
-            <div className="rounded-lg border border-border/80 bg-muted/40 p-2.5 text-xs space-y-1.5">
-              <p className="font-semibold text-foreground text-[11px] flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                Permissões solicitadas:
-              </p>
-              <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Acesso ao perfil público e nome de usuário</li>
-                <li>Leitura do endereço de e-mail verificado</li>
-              </ul>
-            </div>
-
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pt-1">
-              Conectar com a conta:
-            </p>
-
-            {/* Account 1: EduBraga7 */}
-            <div
-              onClick={() => handleSocialAuth('github', 'EduBraga7', 'dubragaaa@gmail.com')}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-border/80 hover:bg-muted/70 cursor-pointer transition-all hover:border-primary/50 group"
-            >
-              <div className="h-9 w-9 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-xs shadow-xs border border-zinc-700 shrink-0">
-                EB
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">EduBraga7 (Criador)</p>
-                <p className="text-[11px] text-muted-foreground font-mono truncate">dubragaaa@gmail.com</p>
-              </div>
-              <span className="text-[10px] text-muted-foreground border border-border px-1.5 py-0.5 rounded-md font-mono shrink-0">Autorizar</span>
-            </div>
-
-            {/* Account 2: Tech Lead / Guest */}
-            <div
-              onClick={() => handleSocialAuth('github', 'Tech Lead Reviewer', 'techlead.reviewer@github.com')}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-border/80 hover:bg-muted/70 cursor-pointer transition-all hover:border-primary/50 group"
-            >
-              <div className="h-9 w-9 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-xs shadow-xs border border-zinc-700 shrink-0">
-                TL
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">Tech Lead / Avaliador GitHub</p>
-                <p className="text-[11px] text-muted-foreground font-mono truncate">techlead.reviewer@github.com</p>
-              </div>
-              <span className="text-[10px] text-muted-foreground border border-border px-1.5 py-0.5 rounded-md font-mono shrink-0">Autorizar</span>
-            </div>
-
-            {/* Custom GitHub Username */}
-            <div className="pt-2 border-t border-border/60">
-              <label className="text-[11px] text-muted-foreground font-medium block mb-1.5">
-                Ou informe seu @usuário do GitHub:
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  value={githubCustomUser}
-                  onChange={e => setGithubCustomUser(e.target.value)}
-                  placeholder="ex: seugithub"
-                  className="h-8.5 text-xs"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!githubCustomUser.trim()}
-                  onClick={() => {
-                    const cleanUser = githubCustomUser.trim().replace(/^@/, '')
-                    handleSocialAuth('github', cleanUser, `${cleanUser.toLowerCase()}@github.com`)
-                  }}
-                  className="h-8.5 text-xs shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  Autorizar
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
+
