@@ -42,6 +42,7 @@ import {
   LogOut
 } from 'lucide-react'
 import { LoginView } from '@/components/auth/login-view'
+import { ClerkAuthSync } from '@/components/auth/clerk-auth-sync'
 import { useTheme } from 'next-themes'
 import {
   Area,
@@ -999,7 +1000,14 @@ export default function Page() {
 
   // Not authenticated: render high-conversion SaaS split-screen Login
   if (!isAuthenticated) {
-    return <LoginView onLogin={handleLogin} />
+    return (
+      <>
+        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
+          <ClerkAuthSync onUserSynced={handleLogin} />
+        )}
+        <LoginView onLogin={handleLogin} />
+      </>
+    )
   }
 
   return (

@@ -1,5 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { ClerkProvider } from '@clerk/nextjs'
+import { dark } from '@clerk/themes'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
@@ -31,7 +33,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+  const content = (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="antialiased bg-background text-foreground min-h-screen">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
@@ -41,4 +45,23 @@ export default function RootLayout({
       </body>
     </html>
   )
+
+  if (!publishableKey) {
+    return content
+  }
+
+  return (
+    <ClerkProvider
+      publishableKey={publishableKey}
+      appearance={{
+        theme: dark,
+        variables: {
+          colorPrimary: '#e11d48'
+        }
+      }}
+    >
+      {content}
+    </ClerkProvider>
+  )
 }
+

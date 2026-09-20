@@ -304,6 +304,79 @@ export async function socialLoginAction(payload: {
   }
 }
 
+export async function syncClerkUserAction(payload: {
+  clerkId: string
+  name: string
+  email: string
+  avatarUrl?: string
+  provider?: string
+}): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  try {
+    const normalizedEmail = payload.email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      return { success: false, error: 'E-mail do Clerk inválido.' }
+    }
+
+    const existing = await sql`
+      SELECT id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl"
+      FROM users
+      WHERE LOWER(email) = ${normalizedEmail}
+      LIMIT 1;
+    `
+
+    const authProvider = (payload.provider as any) || 'google'
+
+    if (existing.length > 0) {
+      const u = existing[0]
+      await sql`
+        UPDATE users
+        SET auth_provider = ${authProvider},
+            avatar_url = COALESCE(NULLIF(${payload.avatarUrl || ''}, ''), avatar_url),
+            updated_at = NOW()
+        WHERE id = ${u.id};
+      `
+      return {
+        success: true,
+        user: {
+          id: u.id,
+          name: payload.name || u.name,
+          email: u.email,
+          role: u.role || 'Piloto Verificado',
+          authProvider,
+          avatarUrl: payload.avatarUrl || u.avatarUrl || ''
+        }
+      }
+    }
+
+    const randomPass = hashPassword(`clerk_${Date.now()}_${payload.clerkId}`)
+    const inserted = await sql`
+      INSERT INTO users (name, email, password_hash, role, auth_provider, avatar_url)
+      VALUES (${payload.name.trim() || 'Piloto'}, ${normalizedEmail}, ${randomPass}, 'Piloto Verificado', ${authProvider}, ${payload.avatarUrl || ''})
+      RETURNING id, name, email, role, auth_provider as "authProvider", avatar_url as "avatarUrl";
+    `
+    const newUser = inserted[0]
+    await sql`
+      INSERT INTO motos (user_id, name, model, plate, year, photo_url)
+      VALUES (${newUser.id}, 'Minha Moto', 'Honda CB 300F Twister', 'BRA-2E19', '2024', '');
+    `
+
+    return {
+      success: true,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        authProvider: newUser.authProvider,
+        avatarUrl: newUser.avatarUrl || ''
+      }
+    }
+  } catch (error) {
+    console.error('Erro no syncClerkUserAction:', error)
+    return { success: false, error: 'Erro ao sincronizar com banco Neon.' }
+  }
+}
+
 // ======================== MOTORCYCLE ACTIONS ========================
 
 export async function getMoto(userId?: number): Promise<Moto> {
