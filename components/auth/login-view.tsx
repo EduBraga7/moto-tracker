@@ -114,6 +114,9 @@ export function LoginView({ onLogin }: LoginViewProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    try {
+      sessionStorage.removeItem('moto_tracker_logged_out')
+    } catch {}
 
     if (!email.trim() || !password) {
       setError('Por favor, informe seu e-mail e sua senha.')
@@ -638,7 +641,14 @@ export function LoginView({ onLogin }: LoginViewProps) {
             </div>
 
             {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div
+                className="grid grid-cols-2 gap-2"
+                onClickCapture={() => {
+                  try {
+                    sessionStorage.removeItem('moto_tracker_logged_out')
+                  } catch {}
+                }}
+              >
                 <SignInButton mode="modal">
                   <Button
                     type="button"

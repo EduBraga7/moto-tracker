@@ -85,6 +85,7 @@ export default function Page() {
 
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userProfile, setUserProfile] = useState<AuthUser>({
     id: 1,
@@ -197,6 +198,13 @@ export default function Page() {
     // Check server session first
     getCurrentUserAction()
       .then(serverUser => {
+        // If the user deliberately logged out in this browser session, do not auto-login
+        if (typeof window !== 'undefined' && sessionStorage.getItem('moto_tracker_logged_out') === 'true') {
+          setIsAuthenticated(false)
+          setLoading(false)
+          return
+        }
+
         if (serverUser) {
           setIsAuthenticated(true)
           setUserProfile(serverUser)
@@ -245,19 +253,32 @@ export default function Page() {
 
   // Auth Handlers
   const handleLogin = (user: AuthUser) => {
-    setIsAuthenticated(true)
-    setUserProfile(user)
     try {
+      sessionStorage.removeItem('moto_tracker_logged_out')
       localStorage.setItem('moto_tracker_auth', JSON.stringify({ authenticated: true, user }))
     } catch {}
+    setIsAuthenticated(true)
+    setUserProfile(user)
     loadData(user.id)
   }
 
   const handleLogout = async () => {
-    await logoutAction()
+    setIsUserDialogOpen(false)
     try {
       localStorage.removeItem('moto_tracker_auth')
+      sessionStorage.setItem('moto_tracker_logged_out', 'true')
     } catch {}
+    await logoutAction()
+
+    if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+      setIsLoggingOut(true)
+    } else {
+      setIsAuthenticated(false)
+    }
+  }
+
+  const handleLogoutDone = () => {
+    setIsLoggingOut(false)
     setIsAuthenticated(false)
   }
 
@@ -438,7 +459,11 @@ export default function Page() {
     return (
       <>
         {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
-          <ClerkAuthSync onUserSynced={handleLogin} />
+          <ClerkAuthSync
+            onUserSynced={handleLogin}
+            isLoggingOut={isLoggingOut}
+            onLogoutDone={handleLogoutDone}
+          />
         )}
         <LoginView onLogin={handleLogin} />
       </>
@@ -447,6 +472,13 @@ export default function Page() {
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">
+      {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
+        <ClerkAuthSync
+          onUserSynced={handleLogin}
+          isLoggingOut={isLoggingOut}
+          onLogoutDone={handleLogoutDone}
+        />
+      )}
       {/* Dialogs */}
       <FuelingDialog
         open={isFuelingDialogOpen}

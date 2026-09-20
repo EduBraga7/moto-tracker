@@ -71,6 +71,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 export async function clearSession(): Promise<void> {
   try {
     const cookieStore = await cookies()
+    cookieStore.set(SESSION_COOKIE_NAME, '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0
+    })
     cookieStore.delete(SESSION_COOKIE_NAME)
   } catch (err) {
     console.error('Failed to delete session cookie:', err)

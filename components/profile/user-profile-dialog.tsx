@@ -177,7 +177,10 @@ export function UserProfileDialog({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onLogout}
+            onClick={() => {
+              onOpenChange(false)
+              onLogout()
+            }}
             className="w-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-2 cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5" />
